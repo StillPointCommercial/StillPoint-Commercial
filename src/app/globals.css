@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --charcoal: #2C2C2C;
+    --charcoal-light: #4A4A4A;
+    --text: #3A3632;
+    --text-light: #7A746D;
+    --warm-white: #FAF8F5;
+    --cream: #F5F2ED;
+    --sand: #E8E0D4;
+    --sand-light: #F3EFE9;
+    --stone: #C4B5A2;
+    --stone-light: #D9CFC3;
+    --terracotta: #B5876B;
+    --terracotta-muted: #C9A88E;
+    --muted-bronze: #A08B6D;
+    --warm-gray: #8A8279;
+    --border: #DDD6CC;
+    --attention-red: #C0392B;
+    --success-green: #27AE60;
+    --caution-amber: #E67E22;
+  }
+
+  body {
+    color: var(--text);
+    background-color: var(--warm-white);
+  }
+
+  ::selection {
+    background-color: var(--terracotta-muted);
+    color: white;
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta focus-visible:ring-offset-2 focus-visible:ring-offset-warm-white;
+  }
+}
+
+@layer utilities {
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
