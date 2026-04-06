@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { DM_Sans, DM_Serif_Display } from 'next/font/google'
 import { SwRegister } from './sw-init'
+import { SessionRefresh } from '@/components/auth/session-refresh'
 import './globals.css'
 
 const dmSans = DM_Sans({
@@ -47,6 +48,7 @@ export default function RootLayout({
       </head>
       <body className="font-dm-sans bg-warm-white text-text antialiased">
         {children}
+        <SessionRefresh />
         <SwRegister />
       </body>
     </html>

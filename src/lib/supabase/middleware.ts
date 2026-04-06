@@ -23,7 +23,15 @@ export async function updateSession(request: NextRequest) {
           )
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              // Persist cookies for 400 days (max allowed) so the session
+              // survives browser restarts. Supabase refresh-token rotation
+              // keeps this secure — expired tokens are revoked server-side.
+              maxAge: options.maxAge ?? 60 * 60 * 24 * 400,
+              sameSite: options.sameSite ?? 'lax',
+              secure: options.secure ?? true,
+            })
           )
         },
       },
