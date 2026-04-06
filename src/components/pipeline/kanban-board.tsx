@@ -20,6 +20,16 @@ export function KanbanBoard() {
   const contacts = useLiveQuery(() => db.contacts.toArray()) ?? []
   const contactMap = new Map(contacts.map((c: Contact) => [c.id, c]))
 
+  // Build interaction count per contact for display on opportunity cards
+  const interactionCounts = useLiveQuery(async () => {
+    const entries = await db.timeline_entries.toArray()
+    const counts = new Map<string, number>()
+    for (const e of entries) {
+      counts.set(e.contact_id, (counts.get(e.contact_id) || 0) + 1)
+    }
+    return counts
+  }) ?? new Map<string, number>()
+
   function handleDragStart(e: React.DragEvent, opp: Opportunity) {
     setDraggedOpp(opp)
     e.dataTransfer.effectAllowed = 'move'
@@ -99,6 +109,7 @@ export function KanbanBoard() {
                     contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                     onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
                     onDragStart={handleDragStart}
+                    interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                   />
                 ))}
               </div>
@@ -126,6 +137,7 @@ export function KanbanBoard() {
                         opportunity={opp}
                         contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                         onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
+                        interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                       />
                     </div>
                   </div>
@@ -149,6 +161,7 @@ export function KanbanBoard() {
                   opportunity={opp}
                   contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                   onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
+                  interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                 />
               ))
             }

@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Phone, Mail, Linkedin, Pencil, Trash2, AlertCircle } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db/dexie'
+import { ArrowLeft, Phone, Mail, Linkedin, Pencil, Trash2, AlertCircle, MessageCircle } from 'lucide-react'
 import type { Contact } from '@/lib/types'
 import { StatusBadge, IcpBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +23,12 @@ export function ContactHeader({ contact }: { contact: Contact }) {
   const [editing, setEditing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const overdue = isOverdue(contact.next_action_date)
+
+  // Count total interactions for this contact
+  const interactionCount = useLiveQuery(
+    () => db.timeline_entries.where('contact_id').equals(contact.id).count(),
+    [contact.id]
+  ) ?? 0
 
   async function handleDelete() {
     await deleteContact(contact.id)
@@ -80,6 +88,10 @@ export function ContactHeader({ contact }: { contact: Contact }) {
           <div className="flex flex-wrap gap-2 mt-3">
             <StatusBadge status={contact.relationship_status} />
             <IcpBadge icp={contact.icp_fit} />
+            <span className="text-xs bg-sand px-2 py-0.5 rounded-badge text-muted-bronze flex items-center gap-1">
+              <MessageCircle size={10} />
+              {interactionCount} {interactionCount === 1 ? 'interaction' : 'interactions'}
+            </span>
             {contact.tags.map(tag => (
               <span key={tag} className="text-xs bg-sand px-2 py-0.5 rounded-badge text-muted-bronze">
                 {tag}

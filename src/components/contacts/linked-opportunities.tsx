@@ -1,9 +1,11 @@
 'use client'
 
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db/dexie'
 import { useOpportunitiesForContact } from '@/lib/hooks/use-opportunities'
 import { STAGE_LABELS, CONFIDENCE_LABELS } from '@/lib/types'
 import { Badge, ConfidenceBadge } from '@/components/ui/badge'
-import { Briefcase } from 'lucide-react'
+import { Briefcase, MessageCircle } from 'lucide-react'
 
 function khalsaColor(opp: { khalsa_pain_identified: boolean; khalsa_decision_process_clear: boolean; khalsa_resources_confirmed: boolean; khalsa_champion_identified: boolean }) {
   const count = [opp.khalsa_pain_identified, opp.khalsa_decision_process_clear, opp.khalsa_resources_confirmed, opp.khalsa_champion_identified].filter(Boolean).length
@@ -14,6 +16,12 @@ function khalsaColor(opp: { khalsa_pain_identified: boolean; khalsa_decision_pro
 
 export function LinkedOpportunities({ contactId }: { contactId: string }) {
   const opportunities = useOpportunitiesForContact(contactId)
+
+  // Count interactions for this contact (relevant to all opportunities)
+  const interactionCount = useLiveQuery(
+    () => db.timeline_entries.where('contact_id').equals(contactId).count(),
+    [contactId]
+  ) ?? 0
 
   if (opportunities.length === 0) return null
 
@@ -39,11 +47,17 @@ export function LinkedOpportunities({ contactId }: { contactId: string }) {
                 <ConfidenceBadge confidence={opp.confidence} />
               </div>
             </div>
-            {opp.estimated_value > 0 && (
-              <p className="text-sm font-medium text-charcoal mt-2">
-                &euro;{opp.estimated_value.toLocaleString()}
-              </p>
-            )}
+            <div className="flex items-center justify-between mt-2">
+              {opp.estimated_value > 0 ? (
+                <span className="text-sm font-medium text-charcoal">
+                  &euro;{opp.estimated_value.toLocaleString()}
+                </span>
+              ) : <span />}
+              <span className="text-xs text-muted-bronze flex items-center gap-1">
+                <MessageCircle size={10} />
+                {interactionCount} {interactionCount === 1 ? 'interaction' : 'interactions'}
+              </span>
+            </div>
           </div>
         ))}
       </div>

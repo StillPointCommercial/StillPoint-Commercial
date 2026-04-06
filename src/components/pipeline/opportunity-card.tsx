@@ -3,6 +3,7 @@
 import type { Opportunity, Contact } from '@/lib/types'
 import { CONFIDENCE_LABELS } from '@/lib/types'
 import { ConfidenceBadge } from '@/components/ui/badge'
+import { MessageCircle } from 'lucide-react'
 
 function khalsaScore(opp: Opportunity): number {
   return [opp.khalsa_pain_identified, opp.khalsa_decision_process_clear, opp.khalsa_resources_confirmed, opp.khalsa_champion_identified].filter(Boolean).length
@@ -19,9 +20,10 @@ interface OpportunityCardProps {
   contact?: Contact
   onEdit: (opp: Opportunity) => void
   onDragStart?: (e: React.DragEvent, opp: Opportunity) => void
+  interactionCount?: number
 }
 
-export function OpportunityCard({ opportunity, contact, onEdit, onDragStart }: OpportunityCardProps) {
+export function OpportunityCard({ opportunity, contact, onEdit, onDragStart, interactionCount }: OpportunityCardProps) {
   const score = khalsaScore(opportunity)
 
   return (
@@ -50,20 +52,28 @@ export function OpportunityCard({ opportunity, contact, onEdit, onDragStart }: O
         )}
         <ConfidenceBadge confidence={opportunity.confidence} />
       </div>
-      <div className="flex gap-1 mt-2">
-        {['P', 'D', 'R', 'C'].map((letter, i) => {
-          const checked = [opportunity.khalsa_pain_identified, opportunity.khalsa_decision_process_clear, opportunity.khalsa_resources_confirmed, opportunity.khalsa_champion_identified][i]
-          return (
-            <span
-              key={letter}
-              className={`text-[10px] w-5 h-5 flex items-center justify-center rounded-badge ${
-                checked ? 'bg-success-green/15 text-success-green' : 'bg-stone/20 text-warm-gray'
-              }`}
-            >
-              {letter}
-            </span>
-          )
-        })}
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex gap-1">
+          {['P', 'D', 'R', 'C'].map((letter, i) => {
+            const checked = [opportunity.khalsa_pain_identified, opportunity.khalsa_decision_process_clear, opportunity.khalsa_resources_confirmed, opportunity.khalsa_champion_identified][i]
+            return (
+              <span
+                key={letter}
+                className={`text-[10px] w-5 h-5 flex items-center justify-center rounded-badge ${
+                  checked ? 'bg-success-green/15 text-success-green' : 'bg-stone/20 text-warm-gray'
+                }`}
+              >
+                {letter}
+              </span>
+            )
+          })}
+        </div>
+        {interactionCount !== undefined && (
+          <span className="text-[10px] text-warm-gray flex items-center gap-0.5">
+            <MessageCircle size={9} />
+            {interactionCount}
+          </span>
+        )}
       </div>
     </div>
   )
