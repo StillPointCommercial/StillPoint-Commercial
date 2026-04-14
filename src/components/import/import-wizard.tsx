@@ -117,6 +117,8 @@ export function ImportWizard() {
           last_contact_date: null,
           next_action: null,
           next_action_date: null,
+          lead_source: 'other',
+          referred_by: null,
         })
         done++
       } catch {
