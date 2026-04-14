@@ -29,12 +29,13 @@ export async function getOpportunity(id: string): Promise<Opportunity | undefine
 }
 
 export async function createOpportunity(
-  data: Omit<Opportunity, 'id' | 'created_at' | 'updated_at'>
+  data: Omit<Opportunity, 'id' | 'created_at' | 'updated_at' | 'stage_history'>
 ): Promise<Opportunity> {
   const now = new Date().toISOString()
   const opportunity: Opportunity = {
     ...data,
     id: crypto.randomUUID(),
+    stage_history: [{ stage: data.stage, entered_at: now }],
     created_at: now,
     updated_at: now,
   }
@@ -46,6 +47,17 @@ export async function createOpportunity(
 
 export async function updateOpportunity(id: string, data: Partial<Opportunity>): Promise<void> {
   const updates = { ...data, updated_at: new Date().toISOString() }
+
+  // If stage changed, append to stage_history
+  if (data.stage) {
+    const existing = await db.opportunities.get(id)
+    if (existing && existing.stage !== data.stage) {
+      const history = existing.stage_history ?? [{ stage: existing.stage, entered_at: existing.created_at }]
+      history.push({ stage: data.stage, entered_at: new Date().toISOString() })
+      updates.stage_history = history
+    }
+  }
+
   await db.opportunities.update(id, updates)
   await enqueue('update', id, updates as Record<string, unknown>)
 }

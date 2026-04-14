@@ -7,8 +7,8 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
-import type { Contact, RelationshipStatus, IcpFit } from '@/lib/types'
-import { STATUS_LABELS, ICP_LABELS } from '@/lib/types'
+import type { Contact, RelationshipStatus, IcpFit, LeadSource } from '@/lib/types'
+import { STATUS_LABELS, ICP_LABELS, LEAD_SOURCE_LABELS } from '@/lib/types'
 import { createContact, updateContact } from '@/lib/db/contacts'
 import { createClient } from '@/lib/supabase/client'
 
@@ -21,6 +21,7 @@ interface ContactFormProps {
 
 const statusOptions = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))
 const icpOptions = Object.entries(ICP_LABELS).map(([value, label]) => ({ value, label }))
+const leadSourceOptions = Object.entries(LEAD_SOURCE_LABELS).map(([value, label]) => ({ value, label }))
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -38,6 +39,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
     linkedin_url: contact?.linkedin_url ?? '',
     relationship_status: (contact?.relationship_status ?? 'dormant') as RelationshipStatus,
     icp_fit: (contact?.icp_fit ?? 'not_assessed') as IcpFit,
+    lead_source: (contact?.lead_source ?? 'other') as LeadSource,
     tags: contact?.tags?.join(', ') ?? '',
     general_notes: contact?.general_notes ?? '',
     next_action: contact?.next_action ?? '',
@@ -103,6 +105,8 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
         linkedin_url: form.linkedin_url.trim() || null,
         relationship_status: form.relationship_status,
         icp_fit: form.icp_fit,
+        lead_source: form.lead_source,
+        referred_by: contact?.referred_by ?? null,
         tags,
         general_notes: form.general_notes.trim() || null,
         last_contact_date: contact?.last_contact_date ?? null,
@@ -153,9 +157,10 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
           {errors.linkedin_url && <p className="text-red-500 text-sm mt-1">{errors.linkedin_url}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Select label="Status" value={form.relationship_status} options={statusOptions} onChange={e => update('relationship_status', e.target.value)} />
           <Select label="ICP Fit" value={form.icp_fit} options={icpOptions} onChange={e => update('icp_fit', e.target.value)} />
+          <Select label="Lead Source" value={form.lead_source} options={leadSourceOptions} onChange={e => update('lead_source', e.target.value)} />
         </div>
 
         <Input label="Tags" value={form.tags} onChange={e => update('tags', e.target.value)} placeholder="healthcare, founder, referral (comma-separated)" />

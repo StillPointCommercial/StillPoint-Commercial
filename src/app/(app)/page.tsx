@@ -6,6 +6,7 @@ import { PlannedActions } from '@/components/dashboard/planned-actions'
 import { AttentionList } from '@/components/dashboard/attention-list'
 import { GoingColdList } from '@/components/dashboard/going-cold-list'
 import { RecentActivity } from '@/components/dashboard/recent-activity'
+import { PaceWidget } from '@/components/dashboard/pace-widget'
 import { useDashboardData } from '@/lib/hooks/use-dashboard-data'
 
 export default function DashboardPage() {
@@ -28,6 +29,9 @@ export default function DashboardPage() {
         pipelineValue={data.pipelineValue}
         overdueCount={data.overdueCount}
       />
+
+      {/* Year plan pace (shows only when plan is configured) */}
+      <PaceWidget />
 
       {/* Forward-looking: what's coming up */}
       <PlannedActions

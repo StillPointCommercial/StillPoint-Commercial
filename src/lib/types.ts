@@ -7,6 +7,7 @@ export type IcpFit = 'strong' | 'moderate' | 'weak' | 'not_assessed'
 export type EntryType = 'note' | 'meeting' | 'call' | 'email' | 'transcript'
 export type OpportunityStage = 'lead' | 'warming' | 'discovery' | 'proposal' | 'active_client' | 'paused' | 'lost'
 export type ConfidenceLevel = 'low' | 'medium' | 'high'
+export type LeadSource = 'referral' | 'inbound' | 'networking' | 'cold_outreach' | 'existing_client' | 'other'
 
 // ============================================
 // Data models
@@ -24,6 +25,8 @@ export interface Contact {
   linkedin_url: string | null
   relationship_status: RelationshipStatus
   icp_fit: IcpFit
+  lead_source: LeadSource
+  referred_by: string | null // contact ID of referrer
   tags: string[]
   general_notes: string | null
   last_contact_date: string | null
@@ -48,6 +51,11 @@ export interface TimelineEntry {
   created_at: string
 }
 
+export interface StageTransition {
+  stage: OpportunityStage
+  entered_at: string // ISO timestamp
+}
+
 export interface Opportunity {
   id: string
   user_id: string
@@ -55,6 +63,7 @@ export interface Opportunity {
   company: string | null
   title: string
   stage: OpportunityStage
+  stage_history: StageTransition[]
   estimated_value: number
   confidence: ConfidenceLevel
   notes: string | null
@@ -63,6 +72,38 @@ export interface Opportunity {
   khalsa_resources_confirmed: boolean
   khalsa_champion_identified: boolean
   khalsa_yellow_lights: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ============================================
+// Year Plan
+// ============================================
+
+export interface ConversionAssumptions {
+  lead_to_qualified: number     // 0-100 percentage
+  qualified_to_discovery: number
+  discovery_to_proposal: number
+  proposal_to_won: number
+}
+
+export interface YearPlan {
+  id: string
+  user_id: string
+  year: number
+  revenue_target: number
+  avg_deal_size: number
+  target_new_clients: number
+  target_upsells: number
+  pct_revenue_existing: number  // 0-100
+  pct_revenue_new: number       // 0-100
+  // Conversion rates by lead source
+  conversions_cold: ConversionAssumptions
+  conversions_warm: ConversionAssumptions
+  conversions_existing: ConversionAssumptions
+  // Quarterly adjustments (weights, e.g. Q1=20%, Q2=25%, Q3=25%, Q4=30%)
+  quarterly_weights: [number, number, number, number]
+  notes: string | null
   created_at: string
   updated_at: string
 }
@@ -109,6 +150,15 @@ export const ICP_LABELS: Record<IcpFit, string> = {
   moderate: 'Moderate Fit',
   weak: 'Weak Fit',
   not_assessed: 'Not Assessed',
+}
+
+export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
+  referral: 'Referral',
+  inbound: 'Inbound',
+  networking: 'Networking',
+  cold_outreach: 'Cold Outreach',
+  existing_client: 'Existing Client',
+  other: 'Other',
 }
 
 export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
