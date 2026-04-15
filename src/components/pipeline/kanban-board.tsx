@@ -74,6 +74,7 @@ export function KanbanBoard() {
         </div>
         <Fab onClick={() => { setEditingOpp(null); setFormOpen(true) }} label="Add opportunity" />
         <OpportunityForm
+          key={editingOpp?.id ?? 'new'}
           open={formOpen}
           onClose={() => { setFormOpen(false); setEditingOpp(null) }}
           opportunity={editingOpp ?? undefined}
@@ -176,6 +177,7 @@ export function KanbanBoard() {
 
       <Fab onClick={() => { setEditingOpp(null); setFormOpen(true) }} label="Add opportunity" />
       <OpportunityForm
+        key={editingOpp?.id ?? 'new'}
         open={formOpen}
         onClose={() => { setFormOpen(false); setEditingOpp(null) }}
         opportunity={editingOpp ?? undefined}
