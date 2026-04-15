@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db/dexie'
 import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -48,6 +50,23 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
 
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false)
+
+  // Get unique existing companies for autocomplete
+  const allContacts = useLiveQuery(() => db.contacts.toArray()) ?? []
+  const existingCompanies = useMemo(() => {
+    const companies = new Set<string>()
+    for (const c of allContacts) {
+      if (c.company) companies.add(c.company)
+    }
+    return Array.from(companies).sort()
+  }, [allContacts])
+
+  const companySuggestions = useMemo(() => {
+    if (!form.company.trim()) return existingCompanies
+    const q = form.company.toLowerCase()
+    return existingCompanies.filter(c => c.toLowerCase().includes(q))
+  }, [form.company, existingCompanies])
 
   function update(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -140,7 +159,30 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Company" value={form.company} onChange={e => update('company', e.target.value)} />
+          <div className="relative">
+            <Input
+              label="Company"
+              value={form.company}
+              onChange={e => { update('company', e.target.value); setShowCompanySuggestions(true) }}
+              onFocus={() => setShowCompanySuggestions(true)}
+              onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 200)}
+              autoComplete="off"
+            />
+            {showCompanySuggestions && companySuggestions.length > 0 && form.company !== companySuggestions[0] && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-border rounded-card shadow-lg max-h-32 overflow-y-auto">
+                {companySuggestions.slice(0, 5).map(company => (
+                  <button
+                    key={company}
+                    type="button"
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-sand-light"
+                    onMouseDown={e => { e.preventDefault(); update('company', company); setShowCompanySuggestions(false) }}
+                  >
+                    {company}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Input label="Role" value={form.role} onChange={e => update('role', e.target.value)} />
         </div>
 

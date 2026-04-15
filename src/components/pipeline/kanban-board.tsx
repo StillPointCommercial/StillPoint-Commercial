@@ -31,6 +31,11 @@ export function KanbanBoard() {
   }) ?? new Map<string, number>()
 
   function handleDragStart(e: React.DragEvent, opp: Opportunity) {
+    // Prevent dragging won deals back into the pipeline
+    if (opp.stage === 'active_client') {
+      e.preventDefault()
+      return
+    }
     setDraggedOpp(opp)
     e.dataTransfer.effectAllowed = 'move'
   }

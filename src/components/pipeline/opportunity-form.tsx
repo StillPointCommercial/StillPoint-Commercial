@@ -11,6 +11,7 @@ import type { Opportunity, OpportunityStage, ConfidenceLevel } from '@/lib/types
 import { STAGE_LABELS, CONFIDENCE_LABELS } from '@/lib/types'
 import { createOpportunity, updateOpportunity, deleteOpportunity } from '@/lib/db/opportunities'
 import { useContacts } from '@/lib/hooks/use-contacts'
+import { createContact } from '@/lib/db/contacts'
 import { createClient } from '@/lib/supabase/client'
 
 interface OpportunityFormProps {
@@ -46,6 +47,68 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Reset form when the opportunity prop changes (e.g. opening edit for a different opp)
+  useEffect(() => {
+    setForm({
+      contact_id: opportunity?.contact_id ?? defaultContactId ?? '',
+      company: opportunity?.company ?? '',
+      title: opportunity?.title ?? '',
+      stage: (opportunity?.stage ?? 'lead') as OpportunityStage,
+      estimated_value: opportunity?.estimated_value?.toString() ?? '',
+      confidence: (opportunity?.confidence ?? 'low') as ConfidenceLevel,
+      notes: opportunity?.notes ?? '',
+      khalsa_pain_identified: opportunity?.khalsa_pain_identified ?? false,
+      khalsa_decision_process_clear: opportunity?.khalsa_decision_process_clear ?? false,
+      khalsa_resources_confirmed: opportunity?.khalsa_resources_confirmed ?? false,
+      khalsa_champion_identified: opportunity?.khalsa_champion_identified ?? false,
+      khalsa_yellow_lights: opportunity?.khalsa_yellow_lights ?? '',
+    })
+    setShowDeleteConfirm(false)
+    setErrors({})
+  }, [opportunity, defaultContactId])
+
+  // Quick-add contact state
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [quickName, setQuickName] = useState('')
+  const [quickCompany, setQuickCompany] = useState('')
+
+  async function handleQuickAddContact() {
+    if (!quickName.trim()) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const parts = quickName.trim().split(/\s+/)
+    const firstName = parts[0]
+    const lastName = parts.slice(1).join(' ') || null
+
+    const newContact = await createContact({
+      user_id: user.id,
+      first_name: firstName,
+      last_name: lastName,
+      company: quickCompany.trim() || null,
+      role: null,
+      phone: null,
+      email: null,
+      linkedin_url: null,
+      relationship_status: 'dormant',
+      icp_fit: 'not_assessed',
+      tags: [],
+      general_notes: null,
+      last_contact_date: null,
+      next_action: null,
+      next_action_date: null,
+      lead_source: 'other',
+      referred_by: null,
+    })
+
+    setForm(prev => ({ ...prev, contact_id: newContact.id, company: quickCompany.trim() || prev.company }))
+    setShowQuickAdd(false)
+    setQuickName('')
+    setQuickCompany('')
+    toast({ title: `Contact "${firstName}" created`, variant: 'success' })
+  }
 
   // Auto-fill company when contact is selected
   useEffect(() => {
@@ -150,9 +213,31 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         <Input label="Title *" value={form.title} onChange={e => update('title', e.target.value)} required placeholder="Advisory engagement, Strategic review..." />
 
         <div className="grid grid-cols-2 gap-3">
-          <Select label="Contact" value={form.contact_id} options={contactOptions} onChange={e => update('contact_id', e.target.value)} />
+          <div>
+            <Select label="Contact" value={form.contact_id} options={contactOptions} onChange={e => update('contact_id', e.target.value)} />
+            <button
+              type="button"
+              onClick={() => setShowQuickAdd(!showQuickAdd)}
+              className="text-xs text-terracotta hover:text-[#a07860] mt-1"
+            >
+              {showQuickAdd ? 'Cancel' : '+ Quick add contact'}
+            </button>
+          </div>
           <Input label="Company" value={form.company} onChange={e => update('company', e.target.value)} />
         </div>
+
+        {showQuickAdd && (
+          <div className="border border-terracotta/30 rounded-card p-3 bg-sand-light space-y-2">
+            <p className="text-xs font-medium text-charcoal">Quick add contact</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input label="Name" value={quickName} onChange={e => setQuickName(e.target.value)} placeholder="First Last" />
+              <Input label="Company" value={quickCompany} onChange={e => setQuickCompany(e.target.value)} placeholder="Company name" />
+            </div>
+            <Button type="button" size="sm" onClick={handleQuickAddContact} disabled={!quickName.trim()}>
+              Add contact
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-3">
           <Select label="Stage" value={form.stage} options={stageOptions} onChange={e => update('stage', e.target.value)} />

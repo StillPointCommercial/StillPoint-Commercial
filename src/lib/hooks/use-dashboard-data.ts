@@ -49,9 +49,14 @@ export function useDashboardData() {
       c => c.relationship_status === 'warming' || c.relationship_status === 'active'
     ).length
 
-    // Pipeline value: sum of all non-lost/paused opportunities
+    // Pipeline value: sum of in-progress opportunities (exclude won/lost/paused)
     const pipelineValue = opportunities
-      .filter(o => o.stage !== 'lost' && o.stage !== 'paused')
+      .filter(o => o.stage !== 'lost' && o.stage !== 'paused' && o.stage !== 'active_client')
+      .reduce((sum, o) => sum + (o.estimated_value || 0), 0)
+
+    // Secured value: sum of active_client (won deals)
+    const securedValue = opportunities
+      .filter(o => o.stage === 'active_client')
       .reduce((sum, o) => sum + (o.estimated_value || 0), 0)
 
     // Overdue actions: contacts with next_action_date before today
@@ -124,6 +129,7 @@ export function useDashboardData() {
     return {
       activeConversations,
       pipelineValue,
+      securedValue,
       overdueCount: overdueContacts.length,
       overdueContacts,
       goingCold,

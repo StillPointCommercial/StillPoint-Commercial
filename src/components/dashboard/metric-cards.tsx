@@ -1,14 +1,19 @@
-import { MessageSquare, TrendingUp, AlertCircle } from 'lucide-react'
+import { MessageSquare, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface MetricCardsProps {
   activeConversations: number
   pipelineValue: number
+  securedValue: number
   overdueCount: number
 }
 
-export function MetricCards({ activeConversations, pipelineValue, overdueCount }: MetricCardsProps) {
+function formatCurrency(val: number) {
+  return val >= 1000 ? `\u20AC${(val / 1000).toFixed(0)}k` : `\u20AC${val}`
+}
+
+export function MetricCards({ activeConversations, pipelineValue, securedValue, overdueCount }: MetricCardsProps) {
   return (
-    <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
       <MetricCard
         icon={<MessageSquare size={18} />}
         label="Active"
@@ -17,7 +22,13 @@ export function MetricCards({ activeConversations, pipelineValue, overdueCount }
       <MetricCard
         icon={<TrendingUp size={18} />}
         label="Pipeline"
-        value={`\u20AC${pipelineValue >= 1000 ? `${(pipelineValue / 1000).toFixed(0)}k` : pipelineValue.toString()}`}
+        value={formatCurrency(pipelineValue)}
+      />
+      <MetricCard
+        icon={<CheckCircle2 size={18} />}
+        label="Secured"
+        value={formatCurrency(securedValue)}
+        positive={securedValue > 0}
       />
       <MetricCard
         icon={<AlertCircle size={18} />}
@@ -29,13 +40,13 @@ export function MetricCards({ activeConversations, pipelineValue, overdueCount }
   )
 }
 
-function MetricCard({ icon, label, value, alert = false }: { icon: React.ReactNode; label: string; value: string; alert?: boolean }) {
+function MetricCard({ icon, label, value, alert = false, positive = false }: { icon: React.ReactNode; label: string; value: string; alert?: boolean; positive?: boolean }) {
   return (
     <div className="bg-cream border border-border rounded-card p-4">
-      <div className={`mb-2 ${alert ? 'text-attention-red' : 'text-charcoal-light'}`}>
+      <div className={`mb-2 ${alert ? 'text-attention-red' : positive ? 'text-green-600' : 'text-charcoal-light'}`}>
         {icon}
       </div>
-      <p className={`text-2xl font-medium font-dm-sans ${alert ? 'text-attention-red' : 'text-charcoal'}`}>
+      <p className={`text-2xl font-medium font-dm-sans ${alert ? 'text-attention-red' : positive ? 'text-green-700' : 'text-charcoal'}`}>
         {value}
       </p>
       <p className="text-xs text-text-light mt-0.5">{label}</p>

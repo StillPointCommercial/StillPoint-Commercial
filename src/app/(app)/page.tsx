@@ -27,6 +27,7 @@ export default function DashboardPage() {
       <MetricCards
         activeConversations={data.activeConversations}
         pipelineValue={data.pipelineValue}
+        securedValue={data.securedValue}
         overdueCount={data.overdueCount}
       />
 
