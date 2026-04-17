@@ -120,10 +120,18 @@ export function calculateBackward(plan: YearPlan): BackwardCalc {
     lead_to_qualified: (plan.conversions_warm.lead_to_qualified + plan.conversions_cold.lead_to_qualified) / 2,
   }
 
-  const proposalsNeeded = Math.ceil(dealsFromNew / (blendedNew.proposal_to_won / 100))
-  const discoveriesNeeded = Math.ceil(proposalsNeeded / (blendedNew.discovery_to_proposal / 100))
-  const qualifiedLeadsNeeded = Math.ceil(discoveriesNeeded / (blendedNew.qualified_to_discovery / 100))
-  const totalLeadsNeeded = Math.ceil(qualifiedLeadsNeeded / (blendedNew.lead_to_qualified / 100))
+  const proposalsNeeded = blendedNew.proposal_to_won > 0
+    ? Math.ceil(dealsFromNew / (blendedNew.proposal_to_won / 100))
+    : 0
+  const discoveriesNeeded = blendedNew.discovery_to_proposal > 0
+    ? Math.ceil(proposalsNeeded / (blendedNew.discovery_to_proposal / 100))
+    : 0
+  const qualifiedLeadsNeeded = blendedNew.qualified_to_discovery > 0
+    ? Math.ceil(discoveriesNeeded / (blendedNew.qualified_to_discovery / 100))
+    : 0
+  const totalLeadsNeeded = blendedNew.lead_to_qualified > 0
+    ? Math.ceil(qualifiedLeadsNeeded / (blendedNew.lead_to_qualified / 100))
+    : 0
 
   // Quarterly breakdown
   const quarters: QuarterTarget[] = plan.quarterly_weights.map((weight, i) => {

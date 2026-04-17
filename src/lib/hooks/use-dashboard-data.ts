@@ -101,12 +101,12 @@ export function useDashboardData() {
         const contact = opp.contact_id ? contactMap.get(opp.contact_id) : null
         const contactName = contact ? `${contact.first_name} ${contact.last_name || ''}`.trim() : (opp.company || opp.title)
         plannedActions.push({
-          contactId: opp.contact_id || opp.id,
+          contactId: opp.contact_id || '',
           contactName,
           company: opp.company || contact?.company || undefined,
           action: `[${opp.title}] ${opp.next_step}`,
           date: opp.next_step_date,
-          source: 'contact', // show as contact-level
+          source: 'timeline',
         })
       }
     }

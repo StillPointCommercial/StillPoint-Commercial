@@ -9,7 +9,6 @@ import { OpportunityCard } from './opportunity-card'
 import { OpportunityForm } from './opportunity-form'
 import { updateOpportunity } from '@/lib/db/opportunities'
 import { Fab } from '@/components/ui/fab'
-import { Select } from '@/components/ui/select'
 
 export function KanbanBoard() {
   const [editingOpp, setEditingOpp] = useState<Opportunity | null>(null)

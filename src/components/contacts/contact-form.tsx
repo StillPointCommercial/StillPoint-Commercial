@@ -152,14 +152,14 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Contact' : 'New Contact'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Input label="First name *" value={form.first_name} onChange={e => update('first_name', e.target.value)} required />
           </div>
           <Input label="Last name" value={form.last_name} onChange={e => update('last_name', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="relative">
             <Input
               label="Company"
@@ -187,7 +187,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
           <Input label="Role" value={form.role} onChange={e => update('role', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Phone" type="tel" value={form.phone} onChange={e => update('phone', e.target.value)} />
           <div>
             <Input label="Email" type="email" value={form.email} onChange={e => update('email', e.target.value)} />
@@ -200,7 +200,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
           {errors.linkedin_url && <p className="text-red-500 text-sm mt-1">{errors.linkedin_url}</p>}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select label="Status" value={form.relationship_status} options={statusOptions} onChange={e => update('relationship_status', e.target.value)} />
           <Select label="ICP Fit" value={form.icp_fit} options={icpOptions} onChange={e => update('icp_fit', e.target.value)} />
           <Select label="Lead Source" value={form.lead_source} options={leadSourceOptions} onChange={e => update('lead_source', e.target.value)} />
@@ -210,7 +210,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
 
         <Textarea label="Notes" value={form.general_notes} onChange={e => update('general_notes', e.target.value)} rows={3} />
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Next action" value={form.next_action} onChange={e => update('next_action', e.target.value)} placeholder="Follow up on proposal" />
           <Input label="Action date" type="date" value={form.next_action_date} onChange={e => update('next_action_date', e.target.value)} />
         </div>

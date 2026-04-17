@@ -39,7 +39,7 @@ export function PipelineSummary() {
       {securedValue > 0 && (
         <div>
           <span className="text-text-light">Secured: </span>
-          <span className="font-medium text-green-700">&euro;{securedValue.toLocaleString()}</span>
+          <span className="font-medium text-success-green">&euro;{securedValue.toLocaleString()}</span>
         </div>
       )}
     </div>

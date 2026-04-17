@@ -183,14 +183,14 @@ export function YearPlanTargets({ plan, onSave }: Props) {
                         value={target.target_count || ''}
                         onChange={e => {
                           const count = Number(e.target.value)
-                          updateOfferTarget(i, 'target_count', count)
-                          // Auto-calculate revenue
-                          if (count > 0) {
+                          setForm(prev => {
+                            const targets = [...prev.offer_targets]
                             const price = offer.revenue_type === 'recurring'
                               ? offer.price_from * (offer.typical_duration_months || 12)
                               : offer.price_from
-                            updateOfferTarget(i, 'target_revenue', count * price)
-                          }
+                            targets[i] = { ...targets[i], target_count: count, target_revenue: count > 0 ? count * price : 0 }
+                            return { ...prev, offer_targets: targets }
+                          })
                         }}
                         className="w-16 border border-border rounded-input px-2 py-1 text-sm bg-warm-white text-center"
                         min={0}

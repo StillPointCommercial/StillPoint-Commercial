@@ -59,27 +59,26 @@ class StillPointDB extends Dexie {
       companies: 'id, user_id, name',
       offers: 'id, user_id, is_active, sort_order',
     }).upgrade(tx => {
-      // Backfill new fields on contacts
-      tx.table('contacts').toCollection().modify(contact => {
-        if (contact.company_id === undefined) contact.company_id = null
-      })
-      // Backfill new fields on opportunities
-      tx.table('opportunities').toCollection().modify(opp => {
-        if (opp.offer_id === undefined) opp.offer_id = null
-        if (opp.company_id === undefined) opp.company_id = null
-        if (opp.revenue_type === undefined) opp.revenue_type = 'one_time'
-        if (opp.monthly_value === undefined) opp.monthly_value = null
-        if (opp.expected_close_date === undefined) opp.expected_close_date = null
-        if (opp.decision_maker_id === undefined) opp.decision_maker_id = null
-        if (opp.next_step === undefined) opp.next_step = null
-        if (opp.next_step_date === undefined) opp.next_step_date = null
-        if (opp.win_reason === undefined) opp.win_reason = null
-        if (opp.loss_reason === undefined) opp.loss_reason = null
-      })
-      // Backfill offer_targets on year plans
-      tx.table('year_plans').toCollection().modify(plan => {
-        if (plan.offer_targets === undefined) plan.offer_targets = []
-      })
+      return Promise.all([
+        tx.table('contacts').toCollection().modify(contact => {
+          if (contact.company_id === undefined) contact.company_id = null
+        }),
+        tx.table('opportunities').toCollection().modify(opp => {
+          if (opp.offer_id === undefined) opp.offer_id = null
+          if (opp.company_id === undefined) opp.company_id = null
+          if (opp.revenue_type === undefined) opp.revenue_type = 'one_time'
+          if (opp.monthly_value === undefined) opp.monthly_value = null
+          if (opp.expected_close_date === undefined) opp.expected_close_date = null
+          if (opp.decision_maker_id === undefined) opp.decision_maker_id = null
+          if (opp.next_step === undefined) opp.next_step = null
+          if (opp.next_step_date === undefined) opp.next_step_date = null
+          if (opp.win_reason === undefined) opp.win_reason = null
+          if (opp.loss_reason === undefined) opp.loss_reason = null
+        }),
+        tx.table('year_plans').toCollection().modify(plan => {
+          if (plan.offer_targets === undefined) plan.offer_targets = []
+        }),
+      ])
     })
   }
 }

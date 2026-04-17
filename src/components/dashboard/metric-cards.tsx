@@ -43,10 +43,10 @@ export function MetricCards({ activeConversations, pipelineValue, securedValue, 
 function MetricCard({ icon, label, value, alert = false, positive = false }: { icon: React.ReactNode; label: string; value: string; alert?: boolean; positive?: boolean }) {
   return (
     <div className="bg-cream border border-border rounded-card p-4">
-      <div className={`mb-2 ${alert ? 'text-attention-red' : positive ? 'text-green-600' : 'text-charcoal-light'}`}>
+      <div className={`mb-2 ${alert ? 'text-attention-red' : positive ? 'text-success-green' : 'text-charcoal-light'}`}>
         {icon}
       </div>
-      <p className={`text-2xl font-medium font-dm-sans ${alert ? 'text-attention-red' : positive ? 'text-green-700' : 'text-charcoal'}`}>
+      <p className={`text-2xl font-medium font-dm-sans ${alert ? 'text-attention-red' : positive ? 'text-success-green' : 'text-charcoal'}`}>
         {value}
       </p>
       <p className="text-xs text-text-light mt-0.5">{label}</p>

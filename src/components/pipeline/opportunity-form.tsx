@@ -71,40 +71,45 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
 
   async function handleQuickAddContact() {
     if (!quickName.trim()) return
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-    const parts = quickName.trim().split(/\s+/)
-    const firstName = parts[0]
-    const lastName = parts.slice(1).join(' ') || null
+      const parts = quickName.trim().split(/\s+/)
+      const firstName = parts[0]
+      const lastName = parts.slice(1).join(' ') || null
 
-    const newContact = await createContact({
-      user_id: user.id,
-      first_name: firstName,
-      last_name: lastName,
-      company: quickCompany.trim() || null,
-      company_id: null,
-      role: null,
-      phone: null,
-      email: null,
-      linkedin_url: null,
-      relationship_status: 'dormant',
-      icp_fit: 'not_assessed',
-      tags: [],
-      general_notes: null,
-      last_contact_date: null,
-      next_action: null,
-      next_action_date: null,
-      lead_source: 'other',
-      referred_by: null,
-    })
+      const newContact = await createContact({
+        user_id: user.id,
+        first_name: firstName,
+        last_name: lastName,
+        company: quickCompany.trim() || null,
+        company_id: null,
+        role: null,
+        phone: null,
+        email: null,
+        linkedin_url: null,
+        relationship_status: 'dormant',
+        icp_fit: 'not_assessed',
+        tags: [],
+        general_notes: null,
+        last_contact_date: null,
+        next_action: null,
+        next_action_date: null,
+        lead_source: 'other',
+        referred_by: null,
+      })
 
-    setForm(prev => ({ ...prev, contact_id: newContact.id, company: quickCompany.trim() || prev.company }))
-    setShowQuickAdd(false)
-    setQuickName('')
-    setQuickCompany('')
-    toast({ title: `Contact "${firstName}" created`, variant: 'success' })
+      setForm(prev => ({ ...prev, contact_id: newContact.id, company: quickCompany.trim() || prev.company }))
+      setShowQuickAdd(false)
+      setQuickName('')
+      setQuickCompany('')
+      toast({ title: `Contact "${firstName}" created`, variant: 'success' })
+    } catch (err) {
+      console.error('Failed to quick-add contact:', err)
+      toast({ title: 'Failed to add contact', variant: 'error' })
+    }
   }
 
   // Auto-fill from offer when selected
@@ -212,6 +217,9 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
 
       toast({ title: 'Opportunity saved', variant: 'success' })
       onClose()
+    } catch (err) {
+      console.error('Failed to save opportunity:', err)
+      toast({ title: 'Failed to save opportunity', variant: 'error' })
     } finally {
       setSaving(false)
     }
@@ -246,11 +254,11 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Opportunity' : 'New Opportunity'}>
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Title *" value={form.title} onChange={e => update('title', e.target.value)} required placeholder="Advisory engagement, Strategic review..." />
 
         {/* Contact + Company row */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Select label="Contact" value={form.contact_id} options={contactOptions} onChange={e => update('contact_id', e.target.value)} />
             <button
@@ -283,7 +291,7 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         )}
 
         {/* Stage + Value + Confidence */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select label="Stage" value={form.stage} options={stageOptions} onChange={e => update('stage', e.target.value)} />
           <div>
             <Input label="Value (EUR)" type="number" value={form.estimated_value} onChange={e => update('estimated_value', e.target.value)} />
@@ -293,7 +301,7 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         </div>
 
         {/* Revenue type + Monthly value + Close date */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select label="Revenue Type" value={form.revenue_type} options={revenueTypeOptions} onChange={e => update('revenue_type', e.target.value)} />
           {form.revenue_type === 'recurring' && (
             <Input label="Monthly (EUR)" type="number" value={form.monthly_value} onChange={e => update('monthly_value', e.target.value)} placeholder="e.g. 3000" />
@@ -318,7 +326,7 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         )}
 
         {/* Next step */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Next Step" value={form.next_step} onChange={e => update('next_step', e.target.value)} placeholder="Send proposal, Schedule call..." />
           <Input label="Step Date" type="date" value={form.next_step_date} onChange={e => update('next_step_date', e.target.value)} />
         </div>

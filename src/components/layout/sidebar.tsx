@@ -46,7 +46,7 @@ export function Sidebar() {
                 flex items-center gap-3 px-3 py-2.5 rounded-input text-sm font-medium transition-colors mb-1
                 ${isActive
                   ? 'bg-sand text-charcoal border-l-[3px] border-terracotta'
-                  : 'text-text-light hover:text-charcoal hover:bg-sand-light'
+                  : 'text-text-light hover:text-charcoal hover:bg-sand-light border-l-[3px] border-transparent'
                 }
               `}
             >

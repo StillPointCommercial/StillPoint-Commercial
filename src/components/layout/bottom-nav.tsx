@@ -28,8 +28,8 @@ export function BottomNav() {
               key={href}
               href={href}
               className={`
-                flex flex-col items-center gap-0.5 px-3 py-1 text-xs transition-colors
-                ${isActive ? 'text-terracotta' : 'text-text-light'}
+                flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition-colors
+                ${isActive ? 'text-terracotta font-medium' : 'text-text-light'}
               `}
             >
               <Icon size={20} />

@@ -29,7 +29,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
 
   const now = new Date()
   const yearStart = new Date(plan.year, 0, 1)
-  const yearEnd = new Date(plan.year, 11, 31)
+  const yearEnd = new Date(plan.year + 1, 0, 1)
   const isCurrentYear = now.getFullYear() === plan.year
   const currentQuarter = isCurrentYear ? Math.floor(now.getMonth() / 3) : -1
 
@@ -165,7 +165,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
             {recurringMonthly > 0 && (
               <div>
                 <p className="text-xs text-text-light">MRR</p>
-                <p className="text-xl font-medium text-green-700">&euro;{recurringMonthly.toLocaleString()}/mo</p>
+                <p className="text-xl font-medium text-success-green">&euro;{recurringMonthly.toLocaleString()}/mo</p>
               </div>
             )}
           </div>
@@ -187,7 +187,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
                     </span>
                   </div>
                   <div className="flex gap-3 mt-0.5 text-xs text-text-light">
-                    <span className="text-green-700">{won} won</span>
+                    <span className="text-success-green">{won} won</span>
                     <span>{pipeline} in pipeline</span>
                     {lost > 0 && <span className="text-attention-red">{lost} lost</span>}
                   </div>
@@ -240,7 +240,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
                 {Object.entries(winReasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => (
                   <div key={reason} className="flex items-center justify-between">
                     <span className="text-sm text-text">{reason}</span>
-                    <span className="text-sm font-medium text-green-700">{count}</span>
+                    <span className="text-sm font-medium text-success-green">{count}</span>
                   </div>
                 ))}
               </div>
@@ -265,7 +265,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
       {/* Lead sources */}
       <div className="bg-cream border border-border rounded-card p-5">
         <h3 className="font-dm-serif text-lg text-charcoal mb-4">Lead Sources (All Time)</h3>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
           {Object.entries(sourceBreakdown).map(([source, count]) => (
             <div key={source} className="text-center">
               <p className="text-lg font-medium text-charcoal">{count}</p>
@@ -284,7 +284,10 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
             const monthInQuarter = now.getMonth() % 3
             const quarterProgress = (monthInQuarter + now.getDate() / 30) / 3
             const qStart = `${plan.year}-${String(currentQuarter * 3 + 1).padStart(2, '0')}`
-            const qEnd = `${plan.year}-${String(currentQuarter * 3 + 4).padStart(2, '0')}`
+            const qEndMonth = currentQuarter * 3 + 4
+            const qEnd = qEndMonth <= 12
+              ? `${plan.year}-${String(qEndMonth).padStart(2, '0')}`
+              : `${plan.year + 1}-01`
             const qOpps = yearOpps.filter(o => o.created_at >= qStart && o.created_at < qEnd)
             const qWon = qOpps.filter(o => o.stage === 'active_client')
             const qRevenue = qWon.reduce((s, o) => s + (o.estimated_value || 0), 0)

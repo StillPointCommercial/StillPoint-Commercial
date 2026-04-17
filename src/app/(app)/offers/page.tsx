@@ -93,7 +93,7 @@ export default function OffersPage() {
                   )}
                   <span>{oppCountForOffer(offer.id)} opportunities</span>
                   {revenueForOffer(offer.id) > 0 && (
-                    <span className="text-green-700">&euro;{revenueForOffer(offer.id).toLocaleString()} won</span>
+                    <span className="text-success-green">&euro;{revenueForOffer(offer.id).toLocaleString()} won</span>
                   )}
                 </div>
               </div>
@@ -177,6 +177,9 @@ function OfferForm({ open, onClose, offer, nextSortOrder }: {
 
       toast({ title: 'Offer saved', variant: 'success' })
       onClose()
+    } catch (err) {
+      console.error('Failed to save offer:', err)
+      toast({ title: 'Failed to save offer', variant: 'error' })
     } finally {
       setSaving(false)
     }
@@ -197,12 +200,12 @@ function OfferForm({ open, onClose, offer, nextSortOrder }: {
 
         <Textarea label="Description" value={form.description} onChange={e => update('description', e.target.value)} rows={2} placeholder="What's included, who it's for..." />
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select label="Delivery Type" value={form.delivery_type} options={deliveryOptions} onChange={e => update('delivery_type', e.target.value)} />
           <Select label="Revenue Type" value={form.revenue_type} options={revenueOptions} onChange={e => update('revenue_type', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Input
             label={form.revenue_type === 'recurring' ? 'Price/Month (EUR)' : 'Price (EUR)'}
             type="number"
