@@ -1,14 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db/dexie'
 import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
-import type { Opportunity, OpportunityStage, ConfidenceLevel } from '@/lib/types'
-import { STAGE_LABELS, CONFIDENCE_LABELS } from '@/lib/types'
+import type { Opportunity, OpportunityStage, ConfidenceLevel, RevenueType } from '@/lib/types'
+import { STAGE_LABELS, CONFIDENCE_LABELS, REVENUE_TYPE_LABELS, WIN_REASON_OPTIONS, LOSS_REASON_OPTIONS } from '@/lib/types'
 import { createOpportunity, updateOpportunity, deleteOpportunity } from '@/lib/db/opportunities'
 import { useContacts } from '@/lib/hooks/use-contacts'
 import { createContact } from '@/lib/db/contacts'
@@ -23,19 +25,33 @@ interface OpportunityFormProps {
 
 const stageOptions = Object.entries(STAGE_LABELS).map(([value, label]) => ({ value, label }))
 const confidenceOptions = Object.entries(CONFIDENCE_LABELS).map(([value, label]) => ({ value, label }))
+const revenueTypeOptions = Object.entries(REVENUE_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+const winReasonOptions = [{ value: '', label: 'Select...' }, ...WIN_REASON_OPTIONS.map(r => ({ value: r, label: r }))]
+const lossReasonOptions = [{ value: '', label: 'Select...' }, ...LOSS_REASON_OPTIONS.map(r => ({ value: r, label: r }))]
 
 export function OpportunityForm({ open, onClose, opportunity, defaultContactId }: OpportunityFormProps) {
   const isEdit = !!opportunity
   const contacts = useContacts()
+  const offers = useLiveQuery(() => db.offers.toArray()) ?? []
+  const activeOffers = offers.filter(o => o.is_active)
   const { toast } = useToast()
 
   const [form, setForm] = useState({
     contact_id: opportunity?.contact_id ?? defaultContactId ?? '',
     company: opportunity?.company ?? '',
     title: opportunity?.title ?? '',
+    offer_id: opportunity?.offer_id ?? '',
     stage: (opportunity?.stage ?? 'lead') as OpportunityStage,
     estimated_value: opportunity?.estimated_value?.toString() ?? '',
+    monthly_value: opportunity?.monthly_value?.toString() ?? '',
+    revenue_type: (opportunity?.revenue_type ?? 'one_time') as RevenueType,
     confidence: (opportunity?.confidence ?? 'low') as ConfidenceLevel,
+    expected_close_date: opportunity?.expected_close_date ?? '',
+    decision_maker_id: opportunity?.decision_maker_id ?? '',
+    next_step: opportunity?.next_step ?? '',
+    next_step_date: opportunity?.next_step_date ?? '',
+    win_reason: opportunity?.win_reason ?? '',
+    loss_reason: opportunity?.loss_reason ?? '',
     notes: opportunity?.notes ?? '',
     khalsa_pain_identified: opportunity?.khalsa_pain_identified ?? false,
     khalsa_decision_process_clear: opportunity?.khalsa_decision_process_clear ?? false,
@@ -47,26 +63,6 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Reset form when the opportunity prop changes (e.g. opening edit for a different opp)
-  useEffect(() => {
-    setForm({
-      contact_id: opportunity?.contact_id ?? defaultContactId ?? '',
-      company: opportunity?.company ?? '',
-      title: opportunity?.title ?? '',
-      stage: (opportunity?.stage ?? 'lead') as OpportunityStage,
-      estimated_value: opportunity?.estimated_value?.toString() ?? '',
-      confidence: (opportunity?.confidence ?? 'low') as ConfidenceLevel,
-      notes: opportunity?.notes ?? '',
-      khalsa_pain_identified: opportunity?.khalsa_pain_identified ?? false,
-      khalsa_decision_process_clear: opportunity?.khalsa_decision_process_clear ?? false,
-      khalsa_resources_confirmed: opportunity?.khalsa_resources_confirmed ?? false,
-      khalsa_champion_identified: opportunity?.khalsa_champion_identified ?? false,
-      khalsa_yellow_lights: opportunity?.khalsa_yellow_lights ?? '',
-    })
-    setShowDeleteConfirm(false)
-    setErrors({})
-  }, [opportunity, defaultContactId])
 
   // Quick-add contact state
   const [showQuickAdd, setShowQuickAdd] = useState(false)
@@ -88,6 +84,7 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
       first_name: firstName,
       last_name: lastName,
       company: quickCompany.trim() || null,
+      company_id: null,
       role: null,
       phone: null,
       email: null,
@@ -109,6 +106,25 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
     setQuickCompany('')
     toast({ title: `Contact "${firstName}" created`, variant: 'success' })
   }
+
+  // Auto-fill from offer when selected
+  useEffect(() => {
+    if (form.offer_id) {
+      const offer = activeOffers.find(o => o.id === form.offer_id)
+      if (offer) {
+        setForm(prev => ({
+          ...prev,
+          revenue_type: offer.revenue_type,
+          // If no value set yet, pre-fill from offer price
+          estimated_value: prev.estimated_value || offer.price_from.toString(),
+          monthly_value: offer.revenue_type === 'recurring' && !prev.monthly_value
+            ? offer.price_from.toString()
+            : prev.monthly_value,
+        }))
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.offer_id])
 
   // Auto-fill company when contact is selected
   useEffect(() => {
@@ -156,20 +172,30 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Parse and validate estimated_value
       let estimatedValue = parseFloat(form.estimated_value)
-      if (isNaN(estimatedValue) || estimatedValue < 0) {
-        estimatedValue = 0
-      }
+      if (isNaN(estimatedValue) || estimatedValue < 0) estimatedValue = 0
+
+      let monthlyValue: number | null = parseFloat(form.monthly_value)
+      if (isNaN(monthlyValue) || monthlyValue < 0) monthlyValue = null
 
       const data = {
         user_id: user.id,
         contact_id: form.contact_id || null,
         company: form.company.trim() || null,
+        company_id: null as string | null,
         title: form.title.trim(),
+        offer_id: form.offer_id || null,
         stage: form.stage,
         estimated_value: estimatedValue,
+        monthly_value: monthlyValue,
+        revenue_type: form.revenue_type as RevenueType,
         confidence: form.confidence,
+        expected_close_date: form.expected_close_date || null,
+        decision_maker_id: form.decision_maker_id || null,
+        next_step: form.next_step.trim() || null,
+        next_step_date: form.next_step_date || null,
+        win_reason: form.win_reason || null,
+        loss_reason: form.loss_reason || null,
         notes: form.notes.trim() || null,
         khalsa_pain_identified: form.khalsa_pain_identified,
         khalsa_decision_process_clear: form.khalsa_decision_process_clear,
@@ -207,11 +233,23 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
     })),
   ]
 
+  const offerOptions = [
+    { value: '', label: 'No offer type' },
+    ...activeOffers.map(o => ({
+      value: o.id,
+      label: `${o.name} (€${o.price_from.toLocaleString()})`,
+    })),
+  ]
+
+  const showWinReason = form.stage === 'active_client'
+  const showLossReason = form.stage === 'lost'
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Opportunity' : 'New Opportunity'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
         <Input label="Title *" value={form.title} onChange={e => update('title', e.target.value)} required placeholder="Advisory engagement, Strategic review..." />
 
+        {/* Contact + Company row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Select label="Contact" value={form.contact_id} options={contactOptions} onChange={e => update('contact_id', e.target.value)} />
@@ -239,6 +277,12 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
           </div>
         )}
 
+        {/* Offer type */}
+        {activeOffers.length > 0 && (
+          <Select label="Offer Type" value={form.offer_id} options={offerOptions} onChange={e => update('offer_id', e.target.value)} />
+        )}
+
+        {/* Stage + Value + Confidence */}
         <div className="grid grid-cols-3 gap-3">
           <Select label="Stage" value={form.stage} options={stageOptions} onChange={e => update('stage', e.target.value)} />
           <div>
@@ -248,8 +292,48 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
           <Select label="Confidence" value={form.confidence} options={confidenceOptions} onChange={e => update('confidence', e.target.value)} />
         </div>
 
+        {/* Revenue type + Monthly value + Close date */}
+        <div className="grid grid-cols-3 gap-3">
+          <Select label="Revenue Type" value={form.revenue_type} options={revenueTypeOptions} onChange={e => update('revenue_type', e.target.value)} />
+          {form.revenue_type === 'recurring' && (
+            <Input label="Monthly (EUR)" type="number" value={form.monthly_value} onChange={e => update('monthly_value', e.target.value)} placeholder="e.g. 3000" />
+          )}
+          <Input label="Expected Close" type="date" value={form.expected_close_date} onChange={e => update('expected_close_date', e.target.value)} />
+        </div>
+
+        {/* Decision maker */}
+        {form.contact_id && (
+          <Select
+            label="Decision Maker"
+            value={form.decision_maker_id}
+            options={[
+              { value: '', label: 'Same as contact' },
+              ...contacts.filter(c => c.id !== form.contact_id).map(c => ({
+                value: c.id,
+                label: `${c.first_name} ${c.last_name || ''}${c.company ? ` (${c.company})` : ''}`,
+              })),
+            ]}
+            onChange={e => update('decision_maker_id', e.target.value)}
+          />
+        )}
+
+        {/* Next step */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Next Step" value={form.next_step} onChange={e => update('next_step', e.target.value)} placeholder="Send proposal, Schedule call..." />
+          <Input label="Step Date" type="date" value={form.next_step_date} onChange={e => update('next_step_date', e.target.value)} />
+        </div>
+
+        {/* Win/Loss reason (conditional) */}
+        {showWinReason && (
+          <Select label="Win Reason" value={form.win_reason} options={winReasonOptions} onChange={e => update('win_reason', e.target.value)} />
+        )}
+        {showLossReason && (
+          <Select label="Loss Reason" value={form.loss_reason} options={lossReasonOptions} onChange={e => update('loss_reason', e.target.value)} />
+        )}
+
         <Textarea label="Notes" value={form.notes} onChange={e => update('notes', e.target.value)} rows={2} />
 
+        {/* Khalsa Qualification */}
         <div className="border border-border rounded-card p-4">
           <p className="text-sm font-medium text-charcoal mb-3">Khalsa Qualification</p>
           <div className="space-y-2">

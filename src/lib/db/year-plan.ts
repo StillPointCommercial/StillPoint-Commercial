@@ -37,6 +37,7 @@ export function createDefaultYearPlan(userId: string, year: number): Omit<YearPl
     conversions_warm: { ...DEFAULT_CONVERSIONS_WARM },
     conversions_existing: { ...DEFAULT_CONVERSIONS_EXISTING },
     quarterly_weights: [25, 25, 25, 25],
+    offer_targets: [],
     notes: null,
   }
 }

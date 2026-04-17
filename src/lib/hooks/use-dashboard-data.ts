@@ -95,7 +95,23 @@ export function useDashboardData() {
       }
     }
 
-    // 2. From timeline entry next_step fields (future)
+    // 2. From opportunity next_step fields (deal-level actions)
+    for (const opp of opportunities) {
+      if (opp.next_step && opp.next_step_date && opp.next_step_date >= today) {
+        const contact = opp.contact_id ? contactMap.get(opp.contact_id) : null
+        const contactName = contact ? `${contact.first_name} ${contact.last_name || ''}`.trim() : (opp.company || opp.title)
+        plannedActions.push({
+          contactId: opp.contact_id || opp.id,
+          contactName,
+          company: opp.company || contact?.company || undefined,
+          action: `[${opp.title}] ${opp.next_step}`,
+          date: opp.next_step_date,
+          source: 'contact', // show as contact-level
+        })
+      }
+    }
+
+    // 3. From timeline entry next_step fields (future)
     for (const entry of allEntries) {
       if (entry.next_step && entry.next_step_date && entry.next_step_date >= today) {
         const contact = contactMap.get(entry.contact_id)

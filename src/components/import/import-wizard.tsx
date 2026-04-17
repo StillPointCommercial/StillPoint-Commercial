@@ -106,6 +106,7 @@ export function ImportWizard() {
           first_name: contact.first_name,
           last_name: contact.last_name,
           company: contact.company,
+          company_id: null,
           role: contact.role,
           phone: contact.phone,
           email: contact.email,

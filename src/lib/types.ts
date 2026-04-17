@@ -8,10 +8,23 @@ export type EntryType = 'note' | 'meeting' | 'call' | 'email' | 'transcript'
 export type OpportunityStage = 'lead' | 'warming' | 'discovery' | 'proposal' | 'active_client' | 'paused' | 'lost'
 export type ConfidenceLevel = 'low' | 'medium' | 'high'
 export type LeadSource = 'referral' | 'inbound' | 'networking' | 'cold_outreach' | 'existing_client' | 'other'
+export type DeliveryType = 'project' | 'retainer' | 'advisory'
+export type RevenueType = 'one_time' | 'recurring'
 
 // ============================================
 // Data models
 // ============================================
+
+export interface Company {
+  id: string
+  user_id: string
+  name: string
+  industry: string | null
+  website: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface Contact {
   id: string
@@ -19,6 +32,7 @@ export interface Contact {
   first_name: string
   last_name: string | null
   company: string | null
+  company_id: string | null
   role: string | null
   phone: string | null
   email: string | null
@@ -51,6 +65,22 @@ export interface TimelineEntry {
   created_at: string
 }
 
+export interface Offer {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  price_from: number
+  price_to: number | null         // null = fixed price (use price_from)
+  delivery_type: DeliveryType
+  revenue_type: RevenueType
+  typical_duration_months: number | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface StageTransition {
   stage: OpportunityStage
   entered_at: string // ISO timestamp
@@ -61,11 +91,21 @@ export interface Opportunity {
   user_id: string
   contact_id: string | null
   company: string | null
+  company_id: string | null
   title: string
+  offer_id: string | null
   stage: OpportunityStage
   stage_history: StageTransition[]
   estimated_value: number
+  monthly_value: number | null       // for recurring: monthly amount
+  revenue_type: RevenueType
   confidence: ConfidenceLevel
+  expected_close_date: string | null // YYYY-MM-DD
+  decision_maker_id: string | null   // contact ID of decision maker
+  next_step: string | null
+  next_step_date: string | null
+  win_reason: string | null
+  loss_reason: string | null
   notes: string | null
   khalsa_pain_identified: boolean
   khalsa_decision_process_clear: boolean
@@ -87,6 +127,12 @@ export interface ConversionAssumptions {
   proposal_to_won: number
 }
 
+export interface OfferTarget {
+  offer_id: string
+  target_count: number
+  target_revenue: number
+}
+
 export interface YearPlan {
   id: string
   user_id: string
@@ -97,6 +143,7 @@ export interface YearPlan {
   target_upsells: number
   pct_revenue_existing: number  // 0-100
   pct_revenue_new: number       // 0-100
+  offer_targets: OfferTarget[]  // per-offer breakdown
   // Conversion rates by lead source
   conversions_cold: ConversionAssumptions
   conversions_warm: ConversionAssumptions
@@ -123,7 +170,7 @@ export interface ContactWithDetails extends Contact {
 
 export interface SyncQueueItem {
   id?: number
-  table_name: 'contacts' | 'timeline_entries' | 'opportunities'
+  table_name: 'contacts' | 'timeline_entries' | 'opportunities' | 'companies' | 'offers'
   record_id: string
   action: 'create' | 'update' | 'delete'
   payload: Record<string, unknown>
@@ -184,6 +231,38 @@ export const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
   medium: 'Medium',
   high: 'High',
 }
+
+export const DELIVERY_TYPE_LABELS: Record<DeliveryType, string> = {
+  project: 'Project',
+  retainer: 'Retainer',
+  advisory: 'Advisory',
+}
+
+export const REVENUE_TYPE_LABELS: Record<RevenueType, string> = {
+  one_time: 'One-time',
+  recurring: 'Recurring',
+}
+
+export const WIN_REASON_OPTIONS = [
+  'Strong relationship / trust',
+  'Pain was acute and urgent',
+  'No real competition',
+  'Referral carried weight',
+  'Price was right',
+  'Track record / case studies',
+  'Other',
+] as const
+
+export const LOSS_REASON_OPTIONS = [
+  'Lost on price',
+  'Lost to competitor',
+  'No budget / not a priority',
+  'Decision maker changed',
+  'Timing — delayed indefinitely',
+  'Poor qualification (should not have pursued)',
+  'Relationship not strong enough',
+  'Other',
+] as const
 
 // Active pipeline stages (for kanban board)
 export const ACTIVE_STAGES: OpportunityStage[] = [

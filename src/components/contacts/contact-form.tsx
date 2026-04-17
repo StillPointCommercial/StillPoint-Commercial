@@ -118,6 +118,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim() || null,
         company: form.company.trim() || null,
+        company_id: contact?.company_id ?? null,
         role: form.role.trim() || null,
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,

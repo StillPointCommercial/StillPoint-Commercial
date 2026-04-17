@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Kanban, Target, Upload } from 'lucide-react'
+import { LayoutDashboard, Users, Kanban, Target, Package } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Home', icon: LayoutDashboard },
   { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/pipeline', label: 'Pipeline', icon: Kanban },
+  { href: '/offers', label: 'Offers', icon: Package },
   { href: '/year-plan', label: 'Plan', icon: Target },
 ]
 
