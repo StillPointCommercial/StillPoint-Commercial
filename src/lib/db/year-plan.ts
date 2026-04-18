@@ -46,14 +46,28 @@ export async function getYearPlan(year: number): Promise<YearPlan | undefined> {
   return db.year_plans.where('year').equals(year).first()
 }
 
+function enqueue(action: 'create' | 'update' | 'delete', record_id: string, payload: Record<string, unknown>) {
+  return db.sync_queue.add({
+    table_name: 'year_plans',
+    record_id,
+    action,
+    payload,
+    created_at: new Date().toISOString(),
+    synced: 0 as unknown as boolean,
+    retry_count: 0,
+  })
+}
+
 export async function saveYearPlan(data: Omit<YearPlan, 'id' | 'created_at' | 'updated_at'>): Promise<YearPlan> {
   // Check if plan for this year already exists
   const existing = await db.year_plans.where('year').equals(data.year).first()
   const now = new Date().toISOString()
 
   if (existing) {
+    const updated: YearPlan = { ...existing, ...data, updated_at: now }
     await db.year_plans.update(existing.id, { ...data, updated_at: now })
-    return { ...existing, ...data, updated_at: now }
+    await enqueue('update', existing.id, updated as unknown as Record<string, unknown>)
+    return updated
   }
 
   const plan: YearPlan = {
@@ -63,6 +77,7 @@ export async function saveYearPlan(data: Omit<YearPlan, 'id' | 'created_at' | 'u
     updated_at: now,
   }
   await db.year_plans.add(plan)
+  await enqueue('create', plan.id, plan as unknown as Record<string, unknown>)
   return plan
 }
 

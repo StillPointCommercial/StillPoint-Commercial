@@ -172,7 +172,7 @@ export interface ContactWithDetails extends Contact {
 
 export interface SyncQueueItem {
   id?: number
-  table_name: 'contacts' | 'timeline_entries' | 'opportunities' | 'companies' | 'offers'
+  table_name: 'contacts' | 'timeline_entries' | 'opportunities' | 'companies' | 'offers' | 'year_plans'
   record_id: string
   action: 'create' | 'update' | 'delete'
   payload: Record<string, unknown>

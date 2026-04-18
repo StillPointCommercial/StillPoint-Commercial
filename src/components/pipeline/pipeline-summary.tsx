@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db/dexie'
 import type { Opportunity } from '@/lib/types'
@@ -30,23 +31,20 @@ function calculateVelocity(opportunities: Opportunity[]): number | null {
 export function PipelineSummary() {
   const opportunities = useLiveQuery(() => db.opportunities.toArray()) ?? []
 
-  // In-progress pipeline (excludes won/lost/paused)
-  const inProgress = opportunities.filter(
-    (o: Opportunity) => o.stage !== 'lost' && o.stage !== 'paused' && o.stage !== 'active_client'
-  )
-  const pipelineValue = inProgress.reduce((sum: number, o: Opportunity) => sum + (o.estimated_value || 0), 0)
-
-  const weightedValue = inProgress.reduce((sum: number, o: Opportunity) => {
-    const weight = o.confidence === 'high' ? 0.8 : o.confidence === 'medium' ? 0.5 : 0.2
-    return sum + (o.estimated_value || 0) * weight
-  }, 0)
-
-  // Won deals
-  const won = opportunities.filter((o: Opportunity) => o.stage === 'active_client')
-  const securedValue = won.reduce((sum: number, o: Opportunity) => sum + (o.estimated_value || 0), 0)
-
-  // Pipeline velocity
-  const avgDaysToClose = calculateVelocity(opportunities)
+  const { inProgress, pipelineValue, weightedValue, securedValue, avgDaysToClose } = useMemo(() => {
+    const inProgress = opportunities.filter(
+      (o: Opportunity) => o.stage !== 'lost' && o.stage !== 'paused' && o.stage !== 'active_client'
+    )
+    const pipelineValue = inProgress.reduce((sum: number, o: Opportunity) => sum + (o.estimated_value || 0), 0)
+    const weightedValue = inProgress.reduce((sum: number, o: Opportunity) => {
+      const weight = o.confidence === 'high' ? 0.8 : o.confidence === 'medium' ? 0.5 : 0.2
+      return sum + (o.estimated_value || 0) * weight
+    }, 0)
+    const won = opportunities.filter((o: Opportunity) => o.stage === 'active_client')
+    const securedValue = won.reduce((sum: number, o: Opportunity) => sum + (o.estimated_value || 0), 0)
+    const avgDaysToClose = calculateVelocity(opportunities)
+    return { inProgress, pipelineValue, weightedValue, securedValue, avgDaysToClose }
+  }, [opportunities])
 
   return (
     <div className="flex flex-wrap gap-4 md:gap-6 mb-6 text-sm">

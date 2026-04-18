@@ -97,10 +97,10 @@ export default function OffersPage() {
                   )}
                 </div>
               </div>
-              <button onClick={() => toggleActive(offer)} className="text-text-light hover:text-charcoal" title={offer.is_active ? 'Deactivate' : 'Activate'}>
+              <button type="button" onClick={() => toggleActive(offer)} className="text-text-light hover:text-charcoal" title={offer.is_active ? 'Deactivate' : 'Activate'} aria-label={offer.is_active ? 'Deactivate offer' : 'Activate offer'}>
                 {offer.is_active ? <ToggleRight size={20} className="text-terracotta" /> : <ToggleLeft size={20} />}
               </button>
-              <button onClick={() => { setEditing(offer); setFormOpen(true) }} className="text-text-light hover:text-charcoal">
+              <button type="button" onClick={() => { setEditing(offer); setFormOpen(true) }} className="text-text-light hover:text-charcoal" title="Edit offer" aria-label="Edit offer">
                 <Pencil size={16} />
               </button>
             </div>

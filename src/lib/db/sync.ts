@@ -1,7 +1,7 @@
 import { db } from './dexie'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
 
-const TABLES = ['contacts', 'timeline_entries', 'opportunities'] as const
+const TABLES = ['contacts', 'timeline_entries', 'opportunities', 'companies', 'offers', 'year_plans'] as const
 const MAX_RETRY_COUNT = 5
 
 /** Module-level guard to prevent concurrent syncs within the same tab */

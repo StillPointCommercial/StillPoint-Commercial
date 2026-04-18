@@ -127,7 +127,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
         relationship_status: form.relationship_status,
         icp_fit: form.icp_fit,
         lead_source: form.lead_source,
-        referred_by: form.referred_by || null,
+        referred_by: form.lead_source === 'referral' ? (form.referred_by || null) : null,
         tags,
         general_notes: form.general_notes.trim() || null,
         last_contact_date: contact?.last_contact_date ?? null,
