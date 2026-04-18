@@ -7,6 +7,7 @@ import type { Opportunity, OpportunityStage, Contact } from '@/lib/types'
 import { STAGE_LABELS, ACTIVE_STAGES } from '@/lib/types'
 import { OpportunityCard } from './opportunity-card'
 import { OpportunityForm } from './opportunity-form'
+import { QuickLog } from './quick-log'
 import { updateOpportunity } from '@/lib/db/opportunities'
 import { Fab } from '@/components/ui/fab'
 
@@ -14,6 +15,7 @@ export function KanbanBoard() {
   const [editingOpp, setEditingOpp] = useState<Opportunity | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [draggedOpp, setDraggedOpp] = useState<Opportunity | null>(null)
+  const [quickLogOpp, setQuickLogOpp] = useState<Opportunity | null>(null)
 
   const opportunities = useLiveQuery(() => db.opportunities.toArray()) ?? []
   const contacts = useLiveQuery(() => db.contacts.toArray()) ?? []
@@ -113,6 +115,7 @@ export function KanbanBoard() {
                     opportunity={opp}
                     contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                     onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
+                    onQuickLog={(o) => setQuickLogOpp(o)}
                     onDragStart={handleDragStart}
                     interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                   />
@@ -142,6 +145,7 @@ export function KanbanBoard() {
                         opportunity={opp}
                         contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                         onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
+                        onQuickLog={(o) => setQuickLogOpp(o)}
                         interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                       />
                     </div>
@@ -166,6 +170,7 @@ export function KanbanBoard() {
                   opportunity={opp}
                   contact={opp.contact_id ? contactMap.get(opp.contact_id) : undefined}
                   onEdit={(o) => { setEditingOpp(o); setFormOpen(true) }}
+                  onQuickLog={(o) => setQuickLogOpp(o)}
                   interactionCount={opp.contact_id ? interactionCounts.get(opp.contact_id) ?? 0 : undefined}
                 />
               ))
@@ -181,6 +186,14 @@ export function KanbanBoard() {
         onClose={() => { setFormOpen(false); setEditingOpp(null) }}
         opportunity={editingOpp ?? undefined}
       />
+      {quickLogOpp && (
+        <QuickLog
+          key={quickLogOpp.id}
+          open={!!quickLogOpp}
+          onClose={() => setQuickLogOpp(null)}
+          opportunity={quickLogOpp}
+        />
+      )}
     </>
   )
 }

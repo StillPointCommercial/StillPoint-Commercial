@@ -3,6 +3,8 @@
 import { Greeting } from '@/components/dashboard/greeting'
 import { MetricCards } from '@/components/dashboard/metric-cards'
 import { PlannedActions } from '@/components/dashboard/planned-actions'
+import { DealActions } from '@/components/dashboard/deal-actions'
+import { StalledDeals } from '@/components/dashboard/stalled-deals'
 import { AttentionList } from '@/components/dashboard/attention-list'
 import { GoingColdList } from '@/components/dashboard/going-cold-list'
 import { RecentActivity } from '@/components/dashboard/recent-activity'
@@ -34,7 +36,17 @@ export default function DashboardPage() {
       {/* Year plan pace (shows only when plan is configured) */}
       <PaceWidget />
 
-      {/* Forward-looking: what's coming up */}
+      {/* Stalled deals — urgent attention */}
+      <StalledDeals deals={data.stalledDeals} />
+
+      {/* Forward-looking: deal next steps */}
+      <DealActions
+        today={data.dealActions.today}
+        week={data.dealActions.week}
+        later={data.dealActions.later}
+      />
+
+      {/* Forward-looking: contact actions */}
       <PlannedActions
         today={data.plannedActions.today}
         week={data.plannedActions.week}

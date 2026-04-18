@@ -15,6 +15,24 @@ import { createOpportunity, updateOpportunity, deleteOpportunity } from '@/lib/d
 import { useContacts } from '@/lib/hooks/use-contacts'
 import { createContact } from '@/lib/db/contacts'
 import { createClient } from '@/lib/supabase/client'
+import { ChevronDown } from 'lucide-react'
+
+function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+  return (
+    <div className="border border-border rounded-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium text-charcoal bg-sand-light hover:bg-sand transition-colors"
+      >
+        {title}
+        <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && <div className="p-4 space-y-4">{children}</div>}
+    </div>
+  )
+}
 
 interface OpportunityFormProps {
   open: boolean
@@ -50,6 +68,8 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
     decision_maker_id: opportunity?.decision_maker_id ?? '',
     next_step: opportunity?.next_step ?? '',
     next_step_date: opportunity?.next_step_date ?? '',
+    proposal_sent_date: opportunity?.proposal_sent_date ?? '',
+    proposal_value: opportunity?.proposal_value?.toString() ?? '',
     win_reason: opportunity?.win_reason ?? '',
     loss_reason: opportunity?.loss_reason ?? '',
     notes: opportunity?.notes ?? '',
@@ -199,6 +219,8 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         decision_maker_id: form.decision_maker_id || null,
         next_step: form.next_step.trim() || null,
         next_step_date: form.next_step_date || null,
+        proposal_sent_date: form.proposal_sent_date || null,
+        proposal_value: form.proposal_value ? parseFloat(form.proposal_value) || null : null,
         win_reason: form.win_reason || null,
         loss_reason: form.loss_reason || null,
         notes: form.notes.trim() || null,
@@ -309,41 +331,50 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
           <Input label="Expected Close" type="date" value={form.expected_close_date} onChange={e => update('expected_close_date', e.target.value)} />
         </div>
 
-        {/* Decision maker */}
-        {form.contact_id && (
-          <Select
-            label="Decision Maker"
-            value={form.decision_maker_id}
-            options={[
-              { value: '', label: 'Same as contact' },
-              ...contacts.filter(c => c.id !== form.contact_id).map(c => ({
-                value: c.id,
-                label: `${c.first_name} ${c.last_name || ''}${c.company ? ` (${c.company})` : ''}`,
-              })),
-            ]}
-            onChange={e => update('decision_maker_id', e.target.value)}
-          />
-        )}
-
         {/* Next step */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Next Step" value={form.next_step} onChange={e => update('next_step', e.target.value)} placeholder="Send proposal, Schedule call..." />
           <Input label="Step Date" type="date" value={form.next_step_date} onChange={e => update('next_step_date', e.target.value)} />
         </div>
 
-        {/* Win/Loss reason (conditional) */}
-        {showWinReason && (
-          <Select label="Win Reason" value={form.win_reason} options={winReasonOptions} onChange={e => update('win_reason', e.target.value)} />
-        )}
-        {showLossReason && (
-          <Select label="Loss Reason" value={form.loss_reason} options={lossReasonOptions} onChange={e => update('loss_reason', e.target.value)} />
-        )}
-
         <Textarea label="Notes" value={form.notes} onChange={e => update('notes', e.target.value)} rows={2} />
 
+        {/* Proposal Tracking */}
+        <CollapsibleSection title="Proposal & Close" defaultOpen={!!(form.proposal_sent_date || form.proposal_value || showWinReason || showLossReason)}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Proposal Sent" type="date" value={form.proposal_sent_date} onChange={e => update('proposal_sent_date', e.target.value)} />
+            <Input label="Proposal Value (EUR)" type="number" value={form.proposal_value} onChange={e => update('proposal_value', e.target.value)} placeholder="e.g. 25000" />
+          </div>
+          {showWinReason && (
+            <Select label="Win Reason" value={form.win_reason} options={winReasonOptions} onChange={e => update('win_reason', e.target.value)} />
+          )}
+          {showLossReason && (
+            <Select label="Loss Reason" value={form.loss_reason} options={lossReasonOptions} onChange={e => update('loss_reason', e.target.value)} />
+          )}
+        </CollapsibleSection>
+
+        {/* Decision maker & Stakeholders */}
+        <CollapsibleSection title="Stakeholders" defaultOpen={!!form.decision_maker_id}>
+          {form.contact_id ? (
+            <Select
+              label="Decision Maker"
+              value={form.decision_maker_id}
+              options={[
+                { value: '', label: 'Same as contact' },
+                ...contacts.filter(c => c.id !== form.contact_id).map(c => ({
+                  value: c.id,
+                  label: `${c.first_name} ${c.last_name || ''}${c.company ? ` (${c.company})` : ''}`,
+                })),
+              ]}
+              onChange={e => update('decision_maker_id', e.target.value)}
+            />
+          ) : (
+            <p className="text-xs text-text-light">Select a contact above to set a decision maker.</p>
+          )}
+        </CollapsibleSection>
+
         {/* Khalsa Qualification */}
-        <div className="border border-border rounded-card p-4">
-          <p className="text-sm font-medium text-charcoal mb-3">Khalsa Qualification</p>
+        <CollapsibleSection title="Khalsa Qualification" defaultOpen={form.khalsa_pain_identified || form.khalsa_decision_process_clear || form.khalsa_resources_confirmed || form.khalsa_champion_identified}>
           <div className="space-y-2">
             {([
               ['khalsa_pain_identified', 'Pain identified — Is there a real, diagnosed pain?'],
@@ -370,7 +401,7 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
             placeholder="Any concerns or warning signs?"
             className="mt-3"
           />
-        </div>
+        </CollapsibleSection>
 
         <div className="flex justify-between pt-2">
           <div>

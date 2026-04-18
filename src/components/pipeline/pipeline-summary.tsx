@@ -4,6 +4,29 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db/dexie'
 import type { Opportunity } from '@/lib/types'
 
+/** Calculate average days between stage transitions across all won deals */
+function calculateVelocity(opportunities: Opportunity[]): number | null {
+  const wonDeals = opportunities.filter(o => o.stage === 'active_client' && o.stage_history && o.stage_history.length >= 2)
+  if (wonDeals.length === 0) return null
+
+  let totalDays = 0
+  let count = 0
+
+  for (const opp of wonDeals) {
+    const history = opp.stage_history
+    if (!history || history.length < 2) continue
+    const firstEntry = new Date(history[0].entered_at)
+    const lastEntry = new Date(history[history.length - 1].entered_at)
+    const days = Math.floor((lastEntry.getTime() - firstEntry.getTime()) / (1000 * 60 * 60 * 24))
+    if (days > 0) {
+      totalDays += days
+      count++
+    }
+  }
+
+  return count > 0 ? Math.round(totalDays / count) : null
+}
+
 export function PipelineSummary() {
   const opportunities = useLiveQuery(() => db.opportunities.toArray()) ?? []
 
@@ -21,6 +44,9 @@ export function PipelineSummary() {
   // Won deals
   const won = opportunities.filter((o: Opportunity) => o.stage === 'active_client')
   const securedValue = won.reduce((sum: number, o: Opportunity) => sum + (o.estimated_value || 0), 0)
+
+  // Pipeline velocity
+  const avgDaysToClose = calculateVelocity(opportunities)
 
   return (
     <div className="flex flex-wrap gap-4 md:gap-6 mb-6 text-sm">
@@ -40,6 +66,12 @@ export function PipelineSummary() {
         <div>
           <span className="text-text-light">Secured: </span>
           <span className="font-medium text-success-green">&euro;{securedValue.toLocaleString()}</span>
+        </div>
+      )}
+      {avgDaysToClose !== null && (
+        <div>
+          <span className="text-text-light">Avg close: </span>
+          <span className="font-medium text-charcoal">{avgDaysToClose}d</span>
         </div>
       )}
     </div>

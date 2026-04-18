@@ -42,6 +42,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
     relationship_status: (contact?.relationship_status ?? 'dormant') as RelationshipStatus,
     icp_fit: (contact?.icp_fit ?? 'not_assessed') as IcpFit,
     lead_source: (contact?.lead_source ?? 'other') as LeadSource,
+    referred_by: contact?.referred_by ?? '',
     tags: contact?.tags?.join(', ') ?? '',
     general_notes: contact?.general_notes ?? '',
     next_action: contact?.next_action ?? '',
@@ -126,7 +127,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
         relationship_status: form.relationship_status,
         icp_fit: form.icp_fit,
         lead_source: form.lead_source,
-        referred_by: contact?.referred_by ?? null,
+        referred_by: form.referred_by || null,
         tags,
         general_notes: form.general_notes.trim() || null,
         last_contact_date: contact?.last_contact_date ?? null,
@@ -205,6 +206,23 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
           <Select label="ICP Fit" value={form.icp_fit} options={icpOptions} onChange={e => update('icp_fit', e.target.value)} />
           <Select label="Lead Source" value={form.lead_source} options={leadSourceOptions} onChange={e => update('lead_source', e.target.value)} />
         </div>
+
+        {form.lead_source === 'referral' && (
+          <Select
+            label="Referred By"
+            value={form.referred_by}
+            options={[
+              { value: '', label: 'Select referrer...' },
+              ...allContacts
+                .filter(c => c.id !== contact?.id)
+                .map(c => ({
+                  value: c.id,
+                  label: `${c.first_name} ${c.last_name || ''}${c.company ? ` (${c.company})` : ''}`,
+                })),
+            ]}
+            onChange={e => update('referred_by', e.target.value)}
+          />
+        )}
 
         <Input label="Tags" value={form.tags} onChange={e => update('tags', e.target.value)} placeholder="healthcare, founder, referral (comma-separated)" />
 

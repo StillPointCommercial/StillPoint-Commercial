@@ -104,6 +104,8 @@ export interface Opportunity {
   decision_maker_id: string | null   // contact ID of decision maker
   next_step: string | null
   next_step_date: string | null
+  proposal_sent_date: string | null  // YYYY-MM-DD
+  proposal_value: number | null
   win_reason: string | null
   loss_reason: string | null
   notes: string | null

@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db/dexie'
-import type { Contact, TimelineEntry } from '@/lib/types'
+import type { Contact, TimelineEntry, Opportunity } from '@/lib/types'
 
 const GOING_COLD_DAYS = 14
 
@@ -17,6 +17,26 @@ export interface PlannedAction {
   action: string
   date: string // YYYY-MM-DD
   source: 'contact' | 'timeline' // where the action came from
+}
+
+/** A deal-specific action from opportunity next_step fields */
+export interface DealAction {
+  opportunityId: string
+  contactId: string
+  contactName: string
+  company?: string
+  dealTitle: string
+  action: string
+  date: string
+  stage: string
+  estimatedValue: number
+}
+
+/** A stalled deal: past expected close date and still in pipeline */
+export interface StalledDeal {
+  opportunity: Opportunity
+  contactName: string
+  daysPastDue: number
 }
 
 export function useDashboardData() {
@@ -137,10 +157,58 @@ export function useDashboardData() {
     // Sort by date ascending
     plannedActions.sort((a, b) => a.date.localeCompare(b.date))
 
-    // Split into today and this week
-    const todayActions = plannedActions.filter(a => a.date === today)
-    const weekActions = plannedActions.filter(a => a.date > today && a.date <= weekEndStr)
-    const laterActions = plannedActions.filter(a => a.date > weekEndStr)
+    // Split into today and this week — only contact-sourced actions
+    const contactActions = plannedActions.filter(a => a.source === 'contact')
+    const todayActions = contactActions.filter(a => a.date === today)
+    const weekActions = contactActions.filter(a => a.date > today && a.date <= weekEndStr)
+    const laterActions = contactActions.filter(a => a.date > weekEndStr)
+
+    // ---- Deal Actions (separate from contact actions) ----
+    const dealActions: DealAction[] = []
+    const activePipeline = opportunities.filter(
+      o => o.stage !== 'lost' && o.stage !== 'paused' && o.stage !== 'active_client'
+    )
+
+    for (const opp of activePipeline) {
+      if (opp.next_step && opp.next_step_date && opp.next_step_date >= today) {
+        const contact = opp.contact_id ? contactMap.get(opp.contact_id) : null
+        const contactName = contact
+          ? `${contact.first_name} ${contact.last_name || ''}`.trim()
+          : (opp.company || 'Unknown')
+        dealActions.push({
+          opportunityId: opp.id,
+          contactId: opp.contact_id || '',
+          contactName,
+          company: opp.company || contact?.company || undefined,
+          dealTitle: opp.title,
+          action: opp.next_step,
+          date: opp.next_step_date,
+          stage: opp.stage,
+          estimatedValue: opp.estimated_value || 0,
+        })
+      }
+    }
+    dealActions.sort((a, b) => a.date.localeCompare(b.date))
+
+    const todayDealActions = dealActions.filter(a => a.date === today)
+    const weekDealActions = dealActions.filter(a => a.date > today && a.date <= weekEndStr)
+    const laterDealActions = dealActions.filter(a => a.date > weekEndStr)
+
+    // ---- Stalled Deals (past expected close date) ----
+    const stalledDeals: StalledDeal[] = []
+    for (const opp of activePipeline) {
+      if (opp.expected_close_date && opp.expected_close_date < today) {
+        const contact = opp.contact_id ? contactMap.get(opp.contact_id) : null
+        const contactName = contact
+          ? `${contact.first_name} ${contact.last_name || ''}`.trim()
+          : (opp.company || opp.title)
+        const daysPastDue = Math.floor(
+          (new Date().getTime() - new Date(opp.expected_close_date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)
+        )
+        stalledDeals.push({ opportunity: opp, contactName, daysPastDue })
+      }
+    }
+    stalledDeals.sort((a, b) => b.daysPastDue - a.daysPastDue)
 
     return {
       activeConversations,
@@ -153,6 +221,8 @@ export function useDashboardData() {
       contacts,
       interactionCountByContact,
       plannedActions: { today: todayActions, week: weekActions, later: laterActions },
+      dealActions: { today: todayDealActions, week: weekDealActions, later: laterDealActions },
+      stalledDeals,
     }
   })
 }

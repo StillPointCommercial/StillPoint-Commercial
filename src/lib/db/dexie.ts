@@ -80,6 +80,22 @@ class StillPointDB extends Dexie {
         }),
       ])
     })
+
+    // v5: Add proposal tracking fields on opportunities
+    this.version(5).stores({
+      contacts: 'id, user_id, relationship_status, next_action_date, last_contact_date, company, lead_source, company_id',
+      timeline_entries: 'id, contact_id, user_id, entry_date, entry_type',
+      opportunities: 'id, user_id, contact_id, stage, offer_id, company_id, expected_close_date',
+      sync_queue: '++id, table_name, record_id, synced, created_at',
+      year_plans: 'id, user_id, year',
+      companies: 'id, user_id, name',
+      offers: 'id, user_id, is_active, sort_order',
+    }).upgrade(tx => {
+      return tx.table('opportunities').toCollection().modify(opp => {
+        if (opp.proposal_sent_date === undefined) opp.proposal_sent_date = null
+        if (opp.proposal_value === undefined) opp.proposal_value = null
+      })
+    })
   }
 }
 
