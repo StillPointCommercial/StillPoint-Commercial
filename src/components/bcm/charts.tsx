@@ -34,18 +34,32 @@ export const C = {
   neutral: '#cbd5e1',
   grid: '#eef1f4',
   ink3: '#94a3b8',
+  pos: '#2a7d72',
+  neg: '#c2554d',
 } as const
 
-/** Cycling palette used by mix doughnut / stacked product areas. */
-export const PALETTE = [
-  C.accent,
-  C.slate,
-  C.accentMid,
-  C.accentLight,
-  C.warm,
-  C.neutral,
-  C.accentDark,
+/**
+ * Distinct categorical palette for the 7 product-mix categories, in the order
+ * lic, beheer, omsorg, bereik, hardware, puls, grund — teal, blue, amber,
+ * violet, terracotta, green, slate. Extends past 7 if a chart needs more.
+ */
+export const CAT = [
+  '#2a7d72', // teal     — lic
+  '#3f6fb0', // blue     — beheer
+  '#e0a52e', // amber    — omsorg
+  '#8b5cf6', // violet   — bereik
+  '#cf5d4e', // terracotta — hardware
+  '#4f9d69', // green    — puls
+  '#64748b', // slate    — grund
+  '#0e9aa7',
+  '#b4699e',
+  '#9a8c4a',
+  '#c47b3c',
+  '#7c6cd6',
 ] as const
+
+/** Cycling palette used by mix doughnut / stacked product areas. Aliased to CAT. */
+export const PALETTE = CAT
 
 const axisTick = { fill: C.ink3, fontSize: 11 } as const
 
@@ -91,6 +105,8 @@ export interface SeriesDef {
   name: string
   color: string
   dashed?: boolean
+  /** Render the line at ~55% opacity (used for dashed plan paths). */
+  faint?: boolean
 }
 
 /** Multi-line chart. `valueFmt` controls Y axis + tooltip number formatting. */
@@ -117,20 +133,24 @@ export function LinesChart({
         <YAxis tick={axisTick} tickLine={false} axisLine={false} width={52} tickFormatter={yFmt} />
         <Tooltip {...tooltipStyle} formatter={tipFmt(tFmt)} />
         <Legend wrapperStyle={legendStyle} iconType="plainline" />
-        {series.map((s) => (
-          <Line
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.name}
-            stroke={s.color}
-            strokeWidth={2}
-            strokeDasharray={s.dashed ? '5 4' : undefined}
-            dot={false}
-            activeDot={{ r: 3 }}
-            isAnimationActive={false}
-          />
-        ))}
+        {series.map((s) => {
+          const isTotal = s.key === 'total' || s.name === 'Total'
+          return (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.name}
+              stroke={s.color}
+              strokeWidth={isTotal ? 2.5 : 2}
+              strokeOpacity={s.faint ? 0.55 : 1}
+              strokeDasharray={s.dashed ? '5 4' : undefined}
+              dot={false}
+              activeDot={{ r: 3 }}
+              isAnimationActive={false}
+            />
+          )
+        })}
       </LineChart>
     </ChartShell>
   )
@@ -169,7 +189,7 @@ export function StackedAreaChart({
             stackId="1"
             stroke={s.color}
             fill={s.color}
-            fillOpacity={0.18}
+            fillOpacity={0.8}
             strokeWidth={1.5}
             isAnimationActive={false}
           />

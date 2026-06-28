@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Upload, Table2, FileSpreadsheet } from 'lucide-react'
+import { AlertTriangle, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Chip, cx } from '@/components/suite/ui'
 import { fmtEur, fmtM, fmtNum, fmtPct } from '@/lib/bcm/format'
 import { compute } from '@/lib/bcm/model'
@@ -19,7 +19,7 @@ import {
 } from '@/lib/bcm/store'
 import { parseForecastWorkbook } from '@/lib/bcm/import'
 import type { Dataset, Params } from '@/lib/bcm/types'
-import { ScenarioSidebar } from '@/components/bcm/scenario-sidebar'
+import { ScenarioFoldout } from '@/components/bcm/scenario-sidebar'
 import { SectionLogos } from '@/components/bcm/section-logos'
 import { SectionMix } from '@/components/bcm/section-mix'
 import { SectionFunnel } from '@/components/bcm/section-funnel'
@@ -50,7 +50,18 @@ export default function BusinessCaseModelPage() {
   const [warnings, setWarnings] = useState<string[]>([])
   const [sheetUrl, setSheetUrl] = useState('')
   const [exportNote, setExportNote] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Close the scenario foldout on Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
 
   // --- load a workspace (the owner can switch between client orgs) ---
   const loadForOrg = useCallback(async (uid: string, targetOrgId: string | null) => {
@@ -351,20 +362,79 @@ export default function BusinessCaseModelPage() {
   }
 
   const c = computed
+  const activeScenario = scenarios.find((s) => s.id === activeId) ?? null
 
   return (
     <main className="mx-auto max-w-[1600px] px-6 py-6">
       <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <Segmented<Screen>
-          value={screen}
-          onChange={setScreen}
-          options={[
-            { value: 'model', label: 'Business case model' },
-            { value: 'overview', label: 'Scenario overview' },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented<Screen>
+            value={screen}
+            onChange={setScreen}
+            options={[
+              { value: 'model', label: 'Business case model' },
+              { value: 'overview', label: 'Scenario overview' },
+            ]}
+          />
+          {screen === 'model' && (
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                className={cx(
+                  'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                  menuOpen
+                    ? 'border-suite-accent bg-suite-accent-tint text-suite-accent-dark'
+                    : 'border-suite-border bg-suite-bg text-suite-ink hover:bg-suite-subtle',
+                )}
+              >
+                <SlidersHorizontal size={14} className="shrink-0" />
+                <span className="max-w-[180px] truncate">
+                  {activeScenario?.name ?? 'Scenarios'}
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={cx('shrink-0 transition-transform', menuOpen && 'rotate-180')}
+                />
+              </button>
+
+              {menuOpen && (
+                <>
+                  {/* Backdrop: closes on outside click */}
+                  <div
+                    className="fixed inset-0 z-30"
+                    aria-hidden
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  {/* Foldout card anchored under the button */}
+                  <div className="absolute left-0 top-full z-40 mt-2 max-h-[75vh] w-[360px] max-w-[calc(100vw-3rem)] overflow-auto rounded-xl border border-suite-border bg-suite-bg shadow-lg">
+                    <ScenarioFoldout
+                      scenarios={scenarios}
+                      activeId={activeId}
+                      total2030={c.totalRevenue[4]}
+                      busy={busy}
+                      sheetUrl={sheetUrl}
+                      setSheetUrl={setSheetUrl}
+                      exportNote={exportNote}
+                      onSelect={handleSelect}
+                      onRename={handleRename}
+                      onSave={handleSave}
+                      onNew={handleNew}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      onImport={handleSheetImport}
+                      onExport={handleSheetExport}
+                      onImportExcel={() => fileRef.current?.click()}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-suite-ink-3">
           {isOwner && (
             <label className="flex items-center gap-1.5">
@@ -408,107 +478,45 @@ export default function BusinessCaseModelPage() {
       {screen === 'overview' ? (
         <ScenarioOverview />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-          <ScenarioSidebar
-            scenarios={scenarios}
-            activeId={activeId}
-            total2030={c.totalRevenue[4]}
-            busy={busy}
-            onSelect={handleSelect}
-            onRename={handleRename}
-            onSave={handleSave}
-            onNew={handleNew}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-          />
-
-          <div className="min-w-0 space-y-8">
-            {/* Presets */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-suite-ink-3">Presets:</span>
-              {PRESET_CHIPS.map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => applyPreset(p.key)}
-                  className={cx(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    params.tier === presetByKey(p.key)?.params.tier && p.key !== 'plan'
-                      ? 'border-suite-accent bg-suite-accent-tint text-suite-accent-dark'
-                      : 'border-suite-border text-suite-ink-2 hover:bg-suite-subtle',
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Google Sheets I/O (primary) + Excel fallback */}
-            <Panel
-              title="Google Sheets"
-              subtitle="Import a forecast from a Sheet, or export this model to a new Google Sheet."
-            >
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="url"
-                    value={sheetUrl}
-                    onChange={(e) => setSheetUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSheetImport()
-                    }}
-                    placeholder="Paste a Google Sheets link…"
-                    className="min-w-0 flex-1 rounded-md border border-suite-border bg-suite-bg px-3 py-1.5 text-xs text-suite-ink placeholder:text-suite-ink-3 focus:border-suite-accent focus:outline-none"
-                  />
-                  <button
-                    onClick={handleSheetImport}
-                    disabled={busy || !sheetUrl.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-suite-accent bg-suite-accent-tint px-3 py-1.5 text-xs font-medium text-suite-accent-dark transition-colors hover:brightness-95 disabled:opacity-50"
-                  >
-                    <Table2 size={14} /> Import from Google Sheets
-                  </button>
-                  <button
-                    onClick={handleSheetExport}
-                    disabled={busy}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-suite-accent bg-suite-accent-tint px-3 py-1.5 text-xs font-medium text-suite-accent-dark transition-colors hover:brightness-95 disabled:opacity-50"
-                  >
-                    <FileSpreadsheet size={14} /> Export to Google Sheets
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  {exportNote && (
-                    <span className="text-xs font-medium text-suite-pos">{exportNote}</span>
-                  )}
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    disabled={busy}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-suite-ink-3 underline-offset-2 transition-colors hover:text-suite-ink hover:underline disabled:opacity-50"
-                  >
-                    <Upload size={13} /> Import Excel instead
-                  </button>
-                </div>
-              </div>
-            </Panel>
-
-            {/* Ten-KPI strip */}
-            <KpiStrip>
-              <Kpi label="Total revenue 2030" value={fmtM(c.totalRevenue[4])} sub="base + new" accent />
-              <Kpi label="New revenue 2030" value={fmtM(c.newTotal[4])} sub="cumulative ARR" />
-              <Kpi label="Blended margin" value={fmtPct(c.blendedMargin)} sub="weighted by mix" />
-              <Kpi label="Avg value / new logo" value={fmtEur(c.avgValuePerLogo)} sub="ARR at maturity" />
-              <Kpi label="Leads / mo 2030" value={fmtNum(Math.round(c.leadsPerMonth2030))} sub="to hit intake" />
-              <Kpi label="Google logos 2030" value={fmtNum(Math.round(c.cumLogosG[4]))} />
-              <Kpi label="Microsoft logos 2030" value={fmtNum(Math.round(c.cumLogosMS[4]))} />
-              <Kpi label="Total new logos 2030" value={fmtNum(Math.round(c.totalNewLogos2030))} sub="Google + Microsoft" />
-              <Kpi label="Market penetration 2030" value={fmtPct(c.marketPenetration)} sub="of core market" />
-              <Kpi label="Whitespace 2030" value={fmtNum(Math.round(c.whitespace[4]))} sub="accounts open" />
-            </KpiStrip>
-
-            {/* Sections */}
-            <SectionLogos params={params} set={set} c={c} dataset={dataset.data} />
-            <SectionMix params={params} set={set} c={c} dataset={dataset.data} />
-            <SectionFunnel params={params} set={set} c={c} />
-            <SectionOutcome params={params} set={set} c={c} dataset={dataset.data} />
+        <div className="space-y-8">
+          {/* Presets */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-suite-ink-3">Presets:</span>
+            {PRESET_CHIPS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => applyPreset(p.key)}
+                className={cx(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  params.tier === presetByKey(p.key)?.params.tier && p.key !== 'plan'
+                    ? 'border-suite-accent bg-suite-accent-tint text-suite-accent-dark'
+                    : 'border-suite-border text-suite-ink-2 hover:bg-suite-subtle',
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
+
+          {/* Ten-KPI strip */}
+          <KpiStrip>
+            <Kpi label="Total revenue 2030" value={fmtM(c.totalRevenue[4])} sub="base + new" accent />
+            <Kpi label="New revenue 2030" value={fmtM(c.newTotal[4])} sub="cumulative ARR" />
+            <Kpi label="Blended margin" value={fmtPct(c.blendedMargin)} sub="weighted by mix" />
+            <Kpi label="Avg value / new logo" value={fmtEur(c.avgValuePerLogo)} sub="ARR at maturity" />
+            <Kpi label="Leads / mo 2030" value={fmtNum(Math.round(c.leadsPerMonth2030))} sub="to hit intake" />
+            <Kpi label="Google logos 2030" value={fmtNum(Math.round(c.cumLogosG[4]))} />
+            <Kpi label="Microsoft logos 2030" value={fmtNum(Math.round(c.cumLogosMS[4]))} />
+            <Kpi label="Total new logos 2030" value={fmtNum(Math.round(c.totalNewLogos2030))} sub="Google + Microsoft" />
+            <Kpi label="Market penetration 2030" value={fmtPct(c.marketPenetration)} sub="of core market" />
+            <Kpi label="Whitespace 2030" value={fmtNum(Math.round(c.whitespace[4]))} sub="accounts open" />
+          </KpiStrip>
+
+          {/* Sections */}
+          <SectionLogos params={params} set={set} c={c} dataset={dataset.data} />
+          <SectionMix params={params} set={set} c={c} dataset={dataset.data} />
+          <SectionFunnel params={params} set={set} c={c} />
+          <SectionOutcome params={params} set={set} c={c} dataset={dataset.data} />
         </div>
       )}
     </main>

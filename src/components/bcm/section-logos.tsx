@@ -3,7 +3,7 @@
 import { Panel, Slider } from '@/components/suite/ui'
 import { fmtEur } from '@/lib/bcm/format'
 import type { Params, Computed, Dataset } from '@/lib/bcm/types'
-import { C, LinesChart, StackedBarsChart } from './charts'
+import { C, CAT, LinesChart, StackedBarsChart } from './charts'
 import { SectionGrid, SectionHeading, SliderGroupNote, indexRows, yearRows } from './helpers'
 
 export function SectionLogos({
@@ -61,8 +61,8 @@ export function SectionLogos({
             data={valueRows}
             xKey="jr"
             series={[
-              { key: 'g', name: 'Google', color: C.accent },
-              { key: 'ms', name: 'Microsoft', color: C.slate },
+              { key: 'g', name: 'Google', color: '#3f6fb0' },
+              { key: 'ms', name: 'Microsoft', color: '#e0a52e' },
             ]}
           />
         </Panel>
@@ -73,9 +73,9 @@ export function SectionLogos({
             xKey="year"
             series={[
               { key: 'total', name: 'Total', color: C.accent },
-              { key: 'g', name: 'Google', color: C.accentLight },
-              { key: 'ms', name: 'Microsoft', color: C.warm },
-              { key: 'forecast', name: 'Forecast', color: C.neutral, dashed: true },
+              { key: 'g', name: 'Google', color: '#3f6fb0' },
+              { key: 'ms', name: 'Microsoft', color: '#e0a52e' },
+              { key: 'forecast', name: 'Forecast', color: C.ink3, dashed: true },
             ]}
           />
         </Panel>
@@ -85,11 +85,11 @@ export function SectionLogos({
             data={refRows}
             xKey="year"
             bars={[
-              { key: 'g', name: 'Google logos', color: C.accent },
-              { key: 'ms', name: 'Microsoft logos', color: C.slate },
-              { key: 'puls', name: 'Puls logos', color: C.accentLight },
+              { key: 'g', name: 'Google logos', color: CAT[0] },
+              { key: 'ms', name: 'Microsoft logos', color: CAT[1] },
+              { key: 'puls', name: 'Puls logos', color: CAT[5] },
             ]}
-            line={{ key: 'motion', name: 'New business (€)', color: C.warm }}
+            line={{ key: 'motion', name: 'New business (€)', color: CAT[2] }}
             valueFmt="num"
           />
         </Panel>

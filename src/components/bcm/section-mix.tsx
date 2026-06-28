@@ -2,35 +2,15 @@
 
 import { Panel, Slider, tbl } from '@/components/suite/ui'
 import { fmtM, fmtPct } from '@/lib/bcm/format'
-import type { Params, Computed, Dataset, ProductKey } from '@/lib/bcm/types'
-import { C, DoughnutChart, StackedAreaChart, type SeriesDef } from './charts'
-import { SectionGrid, SectionHeading, SliderGroupNote, yearRows } from './helpers'
-
-const PRODUCT_SERIES: { key: ProductKey; name: string }[] = [
-  { key: 'google_lic', name: 'Google licenties' },
-  { key: 'ms_lic', name: 'Microsoft licenties' },
-  { key: 'beheer', name: 'Beheer' },
-  { key: 'bereik', name: 'Bereikbaarheid' },
-  { key: 'omsorg', name: 'Omsorg' },
-  { key: 'ow', name: 'Onafh. werkplek' },
-  { key: 'hw_new', name: 'Hardware nieuw' },
-  { key: 'hw_repl', name: 'Hardware vervanging' },
-  { key: 'proj', name: 'Projecten' },
-  { key: 'puls_hello', name: 'Puls Hello' },
-  { key: 'puls_dwv', name: 'Puls DWV' },
-  { key: 'grund', name: 'Grund' },
-]
-
-const AREA_PALETTE = [
-  C.accent, C.accentDark, C.slate, C.accentMid, C.accentLight, C.warm,
-  C.neutral, '#7c8aa0', '#86b3aa', '#c7a98c', '#aab7c4', '#5b8f86',
-]
+import type { Params, Computed, Dataset } from '@/lib/bcm/types'
+import { CAT, DoughnutChart, StackedAreaChart, type Datum, type SeriesDef } from './charts'
+import { SectionGrid, SectionHeading, SliderGroupNote } from './helpers'
 
 export function SectionMix({
   params,
   set,
   c,
-  dataset,
+  dataset: _dataset,
 }: {
   params: Params
   set: <K extends keyof Params>(k: K, v: Params[K]) => void
@@ -39,17 +19,21 @@ export function SectionMix({
 }) {
   const pie = c.mixShares.map((m) => ({ name: m.label, value: m.share }))
 
-  const productRows = yearRows(
-    c.years,
-    PRODUCT_SERIES.reduce<Record<string, number[]>>((acc, p) => {
-      acc[p.key] = dataset.productLines[p.key]
-      return acc
-    }, {}),
-  )
-  const areaSeries: SeriesDef[] = PRODUCT_SERIES.map((p, i) => ({
-    key: p.key,
-    name: p.name,
-    color: AREA_PALETTE[i % AREA_PALETTE.length],
+  // Live, slider-driven product-mix projection: split each year's new-logo
+  // revenue across the 7 mix categories by their normalised share. Same
+  // CAT[i] colour mapping as the doughnut above, so the two read together.
+  const shareTotal = c.mixShares.reduce((s, m) => s + m.share, 0) || 1
+  const projRows: Datum[] = c.years.map((y, yi) => {
+    const row: Datum = { year: String(y) }
+    c.mixShares.forEach((m) => {
+      row[m.key] = c.newLogoRev[yi] * (m.share / shareTotal)
+    })
+    return row
+  })
+  const projSeries: SeriesDef[] = c.mixShares.map((m, i) => ({
+    key: m.key,
+    name: m.label,
+    color: CAT[i % CAT.length],
   }))
 
   return (
@@ -96,8 +80,8 @@ export function SectionMix({
           </table>
         </Panel>
 
-        <Panel title="Product mix in the current forecast" subtitle="reference">
-          <StackedAreaChart data={productRows} xKey="year" series={areaSeries} />
+        <Panel title="Product mix projection" subtitle="new-logo revenue split by mix share">
+          <StackedAreaChart data={projRows} xKey="year" series={projSeries} />
         </Panel>
       </SectionGrid>
     </section>

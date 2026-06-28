@@ -15,7 +15,7 @@ import {
 import { Panel, Segmented, Slider, tbl, cx, pos } from '@/components/suite/ui'
 import { fmtEur, fmtM, fmtPct, fmtSignedM } from '@/lib/bcm/format'
 import type { Params, Computed, Dataset, Tier } from '@/lib/bcm/types'
-import { C, StackedAreaChart, tipFmt } from './charts'
+import { C, CAT, StackedAreaChart, tipFmt } from './charts'
 import { SectionGrid, SectionHeading, SliderGroupNote, yearRows } from './helpers'
 
 const axisTick = { fill: C.ink3, fontSize: 11 } as const
@@ -76,12 +76,12 @@ export function SectionOutcome({
                 <YAxis tick={axisTick} tickLine={false} axisLine={false} width={52} tickFormatter={(v: number) => fmtM(v, v >= 1e7 ? 0 : 1)} />
                 <Tooltip {...tooltipStyle} formatter={tipFmt((v) => fmtEur(v))} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
-                <Area type="monotone" dataKey="base" name="Baseline" stroke={C.neutral} fill={C.neutral} fillOpacity={0.25} strokeWidth={1} isAnimationActive={false} />
+                <Area type="monotone" dataKey="base" name="Baseline" stroke={C.neutral} fill={C.neutral} fillOpacity={0.35} strokeWidth={1} isAnimationActive={false} />
                 <Line type="monotone" dataKey="total" name="Total revenue" stroke={C.accent} strokeWidth={2.5} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="forecast" name="Forecast" stroke={C.neutral} strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="planLaag" name="Plan laag" stroke="#c7ccd4" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="planMid" name="Plan midden" stroke="#b4bac4" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="planHoog" name="Plan hoog" stroke="#a0a7b4" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="forecast" name="Forecast" stroke={C.ink3} strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="planLaag" name="Plan laag" stroke="#cbd5e1" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="planMid" name="Plan midden" stroke="#9aa6b2" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="planHoog" name="Plan hoog" stroke="#6b7787" strokeWidth={1.25} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -133,9 +133,9 @@ export function SectionOutcome({
             data={motionRows}
             xKey="year"
             series={[
-              { key: 'nb', name: 'New business', color: C.accent },
-              { key: 'cu', name: 'Cross-sell', color: C.accentMid },
-              { key: 'iv', name: 'Innovation', color: C.slate },
+              { key: 'nb', name: 'New business', color: CAT[0] },
+              { key: 'cu', name: 'Cross-sell', color: CAT[2] },
+              { key: 'iv', name: 'Innovation', color: CAT[3] },
             ]}
           />
         </Panel>

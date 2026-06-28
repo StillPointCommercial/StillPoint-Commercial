@@ -7,7 +7,7 @@ import { compute } from '@/lib/bcm/model'
 import { ADAPTA } from '@/lib/bcm/seed'
 import { GROWTH_KEYS, presetByKey } from '@/lib/bcm/presets'
 import type { Computed, Params } from '@/lib/bcm/types'
-import { C, LinesChart, type SeriesDef } from './charts'
+import { LinesChart, type SeriesDef } from './charts'
 
 interface Scn {
   key: string
@@ -38,12 +38,12 @@ export function ScenarioOverview() {
   })
 
   const chartSeries: SeriesDef[] = [
-    { key: 'm_laag', name: 'Laag', color: C.accentLight },
-    { key: 'm_mid', name: 'Midden', color: C.accent },
-    { key: 'm_hoog', name: 'Hoog', color: C.accentDark },
-    { key: 'p_laag', name: 'Plan laag', color: '#c7ccd4', dashed: true },
-    { key: 'p_mid', name: 'Plan midden', color: '#b4bac4', dashed: true },
-    { key: 'p_hoog', name: 'Plan hoog', color: '#a0a7b4', dashed: true },
+    { key: 'm_laag', name: 'Laag', color: '#3f6fb0' },
+    { key: 'm_mid', name: 'Midden', color: '#e0a52e' },
+    { key: 'm_hoog', name: 'Hoog', color: '#2a7d72' },
+    { key: 'p_laag', name: 'Plan laag', color: '#3f6fb0', dashed: true, faint: true },
+    { key: 'p_mid', name: 'Plan midden', color: '#e0a52e', dashed: true, faint: true },
+    { key: 'p_hoog', name: 'Plan hoog', color: '#2a7d72', dashed: true, faint: true },
   ]
 
   return (
