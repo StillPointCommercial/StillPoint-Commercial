@@ -127,7 +127,7 @@ export function LinkedOpportunities({ contactId }: { contactId: string }) {
         )}
       </div>
 
-      <Link href="/pipeline" className="text-xs text-terracotta hover:text-[#a07860] mt-3 inline-block">
+      <Link href="/tools/cis/pipeline" className="text-xs text-terracotta hover:text-[#a07860] mt-3 inline-block">
         View full pipeline &rarr;
       </Link>
     </div>

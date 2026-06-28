@@ -33,14 +33,14 @@ export function ContactHeader({ contact }: { contact: Contact }) {
   async function handleDelete() {
     await deleteContact(contact.id)
     toast({ title: 'Contact deleted', variant: 'success' })
-    router.push('/contacts')
+    router.push('/tools/cis/contacts')
   }
 
   return (
     <>
       <div className="mb-6">
         <button
-          onClick={() => router.push('/contacts')}
+          onClick={() => router.push('/tools/cis/contacts')}
           className="flex items-center gap-1 text-text-light hover:text-charcoal text-sm mb-4 transition-colors"
         >
           <ArrowLeft size={16} />

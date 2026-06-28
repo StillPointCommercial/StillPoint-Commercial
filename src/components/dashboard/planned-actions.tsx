@@ -22,7 +22,7 @@ function dayLabel(dateStr: string): string {
 function ActionCard({ action }: { action: PlannedAction }) {
   return (
     <Link
-      href={`/contacts/${action.contactId}`}
+      href={`/tools/cis/contacts/${action.contactId}`}
       className="flex items-center justify-between bg-cream border border-border rounded-card p-3 hover:border-terracotta-muted transition-colors group"
     >
       <div className="min-w-0 flex-1">

@@ -148,7 +148,7 @@ export function YearPlanTargets({ plan, onSave }: Props) {
             <p className="text-xs text-text-light mt-0.5">Break down your revenue target by service type.</p>
           </div>
           {activeOffers.length === 0 && (
-            <Link href="/offers" className="text-xs text-terracotta hover:text-[#a07860]">
+            <Link href="/tools/cis/offers" className="text-xs text-terracotta hover:text-[#a07860]">
               Set up offers first &rarr;
             </Link>
           )}

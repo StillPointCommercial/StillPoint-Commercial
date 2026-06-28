@@ -67,7 +67,7 @@ export function KanbanBoard() {
           <p className="text-text-light mb-2">No opportunities yet.</p>
           <p className="text-sm text-text-light mb-4">
             Create one from a{' '}
-            <a href="/contacts" className="text-terracotta underline hover:text-[#a07860]">
+            <a href="/tools/cis/contacts" className="text-terracotta underline hover:text-[#a07860]">
               contact page
             </a>
             , or use the button below.

@@ -23,7 +23,7 @@ function dayLabel(dateStr: string): string {
 function DealActionCard({ action }: { action: DealAction }) {
   return (
     <Link
-      href={action.contactId ? `/contacts/${action.contactId}` : '/pipeline'}
+      href={action.contactId ? `/tools/cis/contacts/${action.contactId}` : '/tools/cis/pipeline'}
       className="flex items-center justify-between bg-cream border border-border rounded-card p-3 hover:border-terracotta-muted transition-colors group"
     >
       <div className="min-w-0 flex-1">

@@ -20,7 +20,7 @@ export function AttentionList({ contacts }: { contacts: Contact[] }) {
         {contacts.slice(0, 5).map(contact => (
           <Link
             key={contact.id}
-            href={`/contacts/${contact.id}`}
+            href={`/tools/cis/contacts/${contact.id}`}
             className="flex items-center justify-between bg-cream border border-border rounded-card p-3 hover:border-terracotta-muted transition-colors"
           >
             <div className="min-w-0 flex-1">
@@ -36,7 +36,7 @@ export function AttentionList({ contacts }: { contacts: Contact[] }) {
           </Link>
         ))}
         {contacts.length > 5 && (
-          <Link href="/contacts" className="text-xs text-terracotta hover:underline">
+          <Link href="/tools/cis/contacts" className="text-xs text-terracotta hover:underline">
             View all {contacts.length} overdue
           </Link>
         )}

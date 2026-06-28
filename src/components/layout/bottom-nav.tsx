@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Kanban, Target, Package } from 'lucide-react'
+import { LayoutDashboard, Users, Kanban, Target, LayoutGrid } from 'lucide-react'
 
 const navItems = [
-  { href: '/', label: 'Home', icon: LayoutDashboard },
-  { href: '/contacts', label: 'Contacts', icon: Users },
-  { href: '/pipeline', label: 'Pipeline', icon: Kanban },
-  { href: '/offers', label: 'Offers', icon: Package },
-  { href: '/year-plan', label: 'Plan', icon: Target },
+  { href: '/', label: 'Tools', icon: LayoutGrid },
+  { href: '/tools/cis', label: 'Home', icon: LayoutDashboard },
+  { href: '/tools/cis/contacts', label: 'Contacts', icon: Users },
+  { href: '/tools/cis/pipeline', label: 'Pipeline', icon: Kanban },
+  { href: '/tools/cis/year-plan', label: 'Plan', icon: Target },
 ]
 
 export function BottomNav() {
@@ -19,8 +19,8 @@ export function BottomNav() {
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-cream border-t border-border z-50 safe-area-pb">
       <div className="flex justify-around py-2">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = href === '/'
-            ? pathname === '/'
+          const isActive = href === '/' || href === '/tools/cis'
+            ? pathname === href
             : pathname.startsWith(href)
 
           return (

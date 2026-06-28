@@ -57,7 +57,7 @@ export function PaceWidget() {
 
   return (
     <Link
-      href="/year-plan"
+      href="/tools/cis/year-plan"
       className="block mb-6 bg-cream border border-border rounded-card p-4 hover:border-terracotta-muted transition-colors"
     >
       <div className="flex items-center gap-2 mb-2">

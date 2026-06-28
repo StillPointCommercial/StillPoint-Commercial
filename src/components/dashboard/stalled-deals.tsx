@@ -21,7 +21,7 @@ export function StalledDeals({ deals }: { deals: StalledDeal[] }) {
         {deals.map(({ opportunity, contactName, daysPastDue }) => (
           <Link
             key={opportunity.id}
-            href={opportunity.contact_id ? `/contacts/${opportunity.contact_id}` : '/pipeline'}
+            href={opportunity.contact_id ? `/tools/cis/contacts/${opportunity.contact_id}` : '/tools/cis/pipeline'}
             className="flex items-center justify-between bg-cream border border-attention-red/20 rounded-card p-3 hover:border-attention-red/40 transition-colors group"
           >
             <div className="min-w-0 flex-1">

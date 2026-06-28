@@ -23,7 +23,7 @@ export function ContactCard({ contact }: { contact: Contact }) {
 
   return (
     <Link
-      href={`/contacts/${contact.id}`}
+      href={`/tools/cis/contacts/${contact.id}`}
       className="block bg-cream border border-border rounded-card p-4 hover:border-terracotta-muted transition-colors"
     >
       <div className="flex items-start justify-between gap-3">

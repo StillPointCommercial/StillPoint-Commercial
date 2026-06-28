@@ -22,7 +22,7 @@ export default function ContactDetailPage() {
     return (
       <div className="py-16 text-center">
         <p className="text-text-light mb-4">Contact not found</p>
-        <a href="/contacts" className="text-accent underline">Back to contacts</a>
+        <a href="/tools/cis/contacts" className="text-accent underline">Back to contacts</a>
       </div>
     )
   }

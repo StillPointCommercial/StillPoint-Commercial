@@ -35,7 +35,7 @@ export function RecentActivity({ entries, contacts }: RecentActivityProps) {
           return (
             <Link
               key={entry.id}
-              href={`/contacts/${entry.contact_id}`}
+              href={`/tools/cis/contacts/${entry.contact_id}`}
               className="flex items-center justify-between bg-cream border border-border rounded-card p-3 hover:border-terracotta-muted transition-colors"
             >
               <div className="min-w-0 flex-1">

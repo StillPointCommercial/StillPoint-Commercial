@@ -1,18 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Kanban, Upload, LogOut, Target, Package } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { LayoutDashboard, Users, Kanban, Upload, LogOut, Target, Package, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/contacts', label: 'Contacts', icon: Users },
-  { href: '/pipeline', label: 'Pipeline', icon: Kanban },
-  { href: '/offers', label: 'Offers', icon: Package },
-  { href: '/year-plan', label: 'Year Plan', icon: Target },
-  { href: '/import', label: 'Import', icon: Upload },
+  { href: '/tools/cis', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/tools/cis/contacts', label: 'Contacts', icon: Users },
+  { href: '/tools/cis/pipeline', label: 'Pipeline', icon: Kanban },
+  { href: '/tools/cis/offers', label: 'Offers', icon: Package },
+  { href: '/tools/cis/year-plan', label: 'Year Plan', icon: Target },
+  { href: '/tools/cis/import', label: 'Import', icon: Upload },
 ]
 
 export function Sidebar() {
@@ -27,15 +26,22 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-cream border-r border-border h-screen sticky top-0">
-      <div className="p-6 pb-4">
+      <div className="p-6 pb-3">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs text-text-light hover:text-charcoal transition-colors mb-3"
+        >
+          <ArrowLeft size={14} />
+          All tools
+        </Link>
         <h1 className="font-dm-serif text-2xl text-charcoal">StillPoint</h1>
         <p className="text-text-light text-xs mt-0.5">Commercial Intelligence</p>
       </div>
 
       <nav className="flex-1 px-3">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = href === '/'
-            ? pathname === '/'
+          const isActive = href === '/tools/cis'
+            ? pathname === '/tools/cis'
             : pathname.startsWith(href)
 
           return (

@@ -21,7 +21,7 @@ export function GoingColdList({ contacts }: { contacts: Contact[] }) {
         {contacts.slice(0, 5).map(contact => (
           <Link
             key={contact.id}
-            href={`/contacts/${contact.id}`}
+            href={`/tools/cis/contacts/${contact.id}`}
             className="flex items-center justify-between bg-cream border border-border rounded-card p-3 hover:border-terracotta-muted transition-colors"
           >
             <div className="min-w-0 flex-1">
