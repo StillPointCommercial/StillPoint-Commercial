@@ -48,6 +48,14 @@ export interface Params {
   samKern: number
   bestaande: number
   baseline: number
+  // --- investment & realism ---
+  baselineChurn: number      // % per year erosion of the existing book
+  gtmFte: number             // go-to-market FTEs (BDM + sales/marketing)
+  gtmCostPerFte: number      // loaded cost per GTM FTE, euro / year
+  deliveryFte: number        // delivery FTEs (e.g. Microsoft engineer)
+  deliveryCostPerFte: number // loaded cost per delivery FTE, euro / year
+  marketingSpend: number     // lead-gen / marketing spend, euro / year
+  leadCapacity: number       // qualified leads the team can generate, / year
 }
 
 export interface Preset {
@@ -102,4 +110,20 @@ export interface Computed {
   leadsPerMonth2030: number
   // plan comparison
   planPath: number[]            // planHerijkt[params.tier]
+  deltaVsPlan2030: number
+  // investment & return (the net business case)
+  gtmCost: number[]
+  grossContribution: number[]
+  netContribution: number[]
+  cumulativeCash: number[]
+  paybackYear: number | null
+  paybackMonths: number | null
+  roi: number
+  totalGtmCost: number
+  totalContribution: number
+  netByEnd: number
+  // lead capacity vs demand
+  leadCapacityPerYear: number[]
+  leadGapPerYear: number[]
+  leadCoverage: number
 }

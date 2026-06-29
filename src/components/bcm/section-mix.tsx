@@ -38,7 +38,7 @@ export function SectionMix({
 
   return (
     <section className="space-y-4">
-      <SectionHeading n={2} title="Product mix & margin" />
+      <SectionHeading n={4} title="Product mix & margin" />
       <SectionGrid
         sliders={
           <div>
@@ -57,13 +57,16 @@ export function SectionMix({
           <DoughnutChart data={pie} />
         </Panel>
 
-        <Panel title="Direct margin per year">
+        <Panel
+          title="Contribution (before GTM cost)"
+          subtitle="Direct margin on new-logo revenue, before go-to-market cost. The net business case is in section 2."
+        >
           <table className={tbl.table}>
             <thead>
               <tr>
                 <th className={tbl.th}>Year</th>
                 <th className={tbl.thR}>New revenue</th>
-                <th className={tbl.thR}>Direct margin</th>
+                <th className={tbl.thR}>Contribution</th>
                 <th className={tbl.thR}>Margin %</th>
               </tr>
             </thead>

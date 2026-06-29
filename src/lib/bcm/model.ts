@@ -63,8 +63,8 @@ export function compute(ds: Dataset, p: Params): Computed {
   const crossUp = ds.motion.cross_up
   const innov = ds.motion.innov
   const newTotal = newLogoRev.map((v, i) => v + crossUp[i] + innov[i])
-  const base = years.map(() => p.baseline)
-  const totalRevenue = newTotal.map((v) => v + p.baseline)
+  const base = years.map((_, y) => p.baseline * Math.pow(1 - p.baselineChurn / 100, y))
+  const totalRevenue = newTotal.map((v, i) => v + base[i])
 
   // current-forecast reference (uses the dataset's own new_business motion)
   const forecastNewBusiness = ds.motion.new_business
@@ -112,6 +112,37 @@ export function compute(ds: Dataset, p: Params): Computed {
   const leadsPctCore = totalLeads / (p.samKern || 1)
   const leadsPerMonth2030 = leads[leads.length - 1] / 12
 
+  // --- investment & return (the net business case) ---
+  const grossContribution = newTotal.map((v) => v * blendedMargin)
+  const annualGtmCost = p.gtmFte * p.gtmCostPerFte + p.deliveryFte * p.deliveryCostPerFte + p.marketingSpend
+  const gtmCost = years.map(() => annualGtmCost)
+  const netContribution = grossContribution.map((v, i) => v - gtmCost[i])
+  const cumulativeCash = runningSum(netContribution)
+  const totalGtmCost = sum(gtmCost)
+  const totalContribution = sum(grossContribution)
+  const netByEnd = cumulativeCash[cumulativeCash.length - 1]
+  const roi = totalGtmCost > 0 ? totalContribution / totalGtmCost : 0
+  let paybackYear: number | null = null
+  let paybackMonths: number | null = null
+  for (let i = 0; i < cumulativeCash.length; i++) {
+    if (cumulativeCash[i] >= 0) {
+      paybackYear = years[i]
+      const prev = i > 0 ? cumulativeCash[i - 1] : 0
+      const denom = cumulativeCash[i] - prev
+      const fracInto = denom > 0 ? Math.min(1, Math.max(0, -prev / denom)) : 0
+      paybackMonths = Math.round((i + fracInto) * 12)
+      break
+    }
+  }
+
+  // --- lead capacity vs demand ---
+  const leadCapacityPerYear = years.map(() => p.leadCapacity)
+  const leadGapPerYear = leads.map((v, i) => Math.max(0, v - leadCapacityPerYear[i]))
+  const leadCoverage = totalLeads > 0 ? sum(leadCapacityPerYear) / totalLeads : 0
+
+  const deltaVsPlan2030 =
+    totalRevenue[totalRevenue.length - 1] - ds.planHerijkt[p.tier][totalRevenue.length - 1]
+
   return {
     years,
     newLogoRev, newLogoRevG, newLogoRevMS, crossUp, innov, newTotal, base, totalRevenue,
@@ -121,6 +152,9 @@ export function compute(ds: Dataset, p: Params): Computed {
     totalNewLogos2030, avgValuePerLogo, valuePerLogoG, valuePerLogoMS,
     marketPenetration, whitespace, cumWonByYear,
     funnel, leadsPerYear: leads, totalLeads, leadsPctCore, leadsPerMonth2030,
-    planPath: ds.planHerijkt[p.tier],
+    planPath: ds.planHerijkt[p.tier], deltaVsPlan2030,
+    gtmCost, grossContribution, netContribution, cumulativeCash,
+    paybackYear, paybackMonths, roi, totalGtmCost, totalContribution, netByEnd,
+    leadCapacityPerYear, leadGapPerYear, leadCoverage,
   }
 }

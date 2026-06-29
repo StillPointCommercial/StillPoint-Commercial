@@ -56,14 +56,15 @@ export function SectionOutcome({
 
   return (
     <section className="space-y-4">
-      <SectionHeading n={4} title="Outcome vs plan" />
+      <SectionHeading n={1} title="Outcome vs plan" />
       <SectionGrid
         sliders={
           <div>
             <Slider label="Core market accounts" value={params.samKern} min={0} max={500} step={1} onChange={(v) => set('samKern', v)} format={(n) => String(n)} />
             <Slider label="Existing accounts" value={params.bestaande} min={0} max={60} step={1} onChange={(v) => set('bestaande', v)} format={(n) => String(n)} />
             <Slider label="Baseline revenue" value={params.baseline} min={0} max={20000000} step={100000} onChange={(v) => set('baseline', v)} format={(n) => fmtEur(n)} />
-            <SliderGroupNote>Baseline is the recurring book of business the new motion builds on top of.</SliderGroupNote>
+            <Slider label="Baseline churn / yr" value={params.baselineChurn} min={0} max={25} step={1} onChange={(v) => set('baselineChurn', v)} format={(n) => `${n}%`} />
+            <SliderGroupNote>Baseline is the recurring book of business the new motion builds on top of; the existing book erodes at the churn rate each year.</SliderGroupNote>
           </div>
         }
       >

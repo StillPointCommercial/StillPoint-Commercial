@@ -6,6 +6,7 @@ const growthBase = {
   mix_lic: 18, mix_beheer: 20, mix_omsorg: 22, mix_bereik: 12, mix_hardware: 10, mix_puls: 8, mix_grund: 10,
   c_sl: 45, c_ld: 55, c_dd: 55, c_dv: 60, c_vc: 50,
   samKern: 220, bestaande: 16, baseline: 9446230,
+  baselineChurn: 0, gtmFte: 2, gtmCostPerFte: 130000, deliveryFte: 1, deliveryCostPerFte: 110000, marketingSpend: 60000, leadCapacity: 80,
 }
 
 export const PRESETS: Preset[] = [
@@ -17,6 +18,7 @@ export const PRESETS: Preset[] = [
       mix_lic: 25, mix_beheer: 22, mix_omsorg: 18, mix_bereik: 8, mix_hardware: 12, mix_puls: 8, mix_grund: 7,
       c_sl: 40, c_ld: 55, c_dd: 55, c_dv: 60, c_vc: 50,
       samKern: 220, bestaande: 16, baseline: 9446230,
+      baselineChurn: 0, gtmFte: 2, gtmCostPerFte: 130000, deliveryFte: 1, deliveryCostPerFte: 110000, marketingSpend: 60000, leadCapacity: 80,
     },
   },
   {

@@ -34,12 +34,11 @@ export function SectionLogos({
     g: dataset.logoPatternG[i] ?? 0,
     ms: dataset.logoPatternMS[i] ?? 0,
     puls: dataset.pulsLogos[i] ?? 0,
-    motion: dataset.motion.new_business[i] ?? 0,
   }))
 
   return (
     <section className="space-y-4">
-      <SectionHeading n={1} title="Logo intake & value build" />
+      <SectionHeading n={3} title="Logo intake & value build" />
       <SectionGrid
         sliders={
           <div>
@@ -80,7 +79,7 @@ export function SectionLogos({
           />
         </Panel>
 
-        <Panel title="Client intake in the current forecast" subtitle="reference">
+        <Panel title="New logos per year (forecast reference)" subtitle="reference">
           <StackedBarsChart
             data={refRows}
             xKey="year"
@@ -89,7 +88,6 @@ export function SectionLogos({
               { key: 'ms', name: 'Microsoft logos', color: CAT[1] },
               { key: 'puls', name: 'Puls logos', color: CAT[5] },
             ]}
-            line={{ key: 'motion', name: 'New business (€)', color: CAT[2] }}
             valueFmt="num"
           />
         </Panel>

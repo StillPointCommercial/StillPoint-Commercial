@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Chip, cx } from '@/components/suite/ui'
-import { fmtEur, fmtM, fmtNum, fmtPct } from '@/lib/bcm/format'
+import { fmtEur, fmtM, fmtNum, fmtPct, fmtSignedM } from '@/lib/bcm/format'
 import { compute } from '@/lib/bcm/model'
 import { presetByKey, PRESETS, GROWTH_KEYS } from '@/lib/bcm/presets'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +24,7 @@ import { SectionLogos } from '@/components/bcm/section-logos'
 import { SectionMix } from '@/components/bcm/section-mix'
 import { SectionFunnel } from '@/components/bcm/section-funnel'
 import { SectionOutcome } from '@/components/bcm/section-outcome'
+import { SectionInvest } from '@/components/bcm/section-invest'
 import { ScenarioOverview } from '@/components/bcm/scenario-overview'
 
 type Screen = 'model' | 'overview'
@@ -498,25 +499,30 @@ export default function BusinessCaseModelPage() {
             ))}
           </div>
 
-          {/* Ten-KPI strip */}
+          {/* Ten-KPI strip — row 1 the verdict, row 2 the build */}
           <KpiStrip>
             <Kpi label="Total revenue 2030" value={fmtM(c.totalRevenue[4])} sub="base + new" accent />
+            <Kpi label="€ vs plan 2030" value={fmtSignedM(c.deltaVsPlan2030)} sub="total vs plan path" />
+            <Kpi
+              label="Payback"
+              value={c.paybackYear ? String(c.paybackYear) : '—'}
+              sub={c.paybackMonths ? `~${c.paybackMonths} mo` : 'beyond 2030'}
+            />
+            <Kpi label="Net by 2030" value={fmtM(c.netByEnd)} sub="after GTM cost" />
+            <Kpi label="Blended margin" value={fmtPct(c.blendedMargin)} sub="before GTM cost" />
             <Kpi label="New revenue 2030" value={fmtM(c.newTotal[4])} sub="cumulative ARR" />
-            <Kpi label="Blended margin" value={fmtPct(c.blendedMargin)} sub="weighted by mix" />
+            <Kpi label="Total new logos 2030" value={fmtNum(Math.round(c.totalNewLogos2030))} />
             <Kpi label="Avg value / new logo" value={fmtEur(c.avgValuePerLogo)} sub="ARR at maturity" />
-            <Kpi label="Leads / mo 2030" value={fmtNum(Math.round(c.leadsPerMonth2030))} sub="to hit intake" />
-            <Kpi label="Google logos 2030" value={fmtNum(Math.round(c.cumLogosG[4]))} />
-            <Kpi label="Microsoft logos 2030" value={fmtNum(Math.round(c.cumLogosMS[4]))} />
-            <Kpi label="Total new logos 2030" value={fmtNum(Math.round(c.totalNewLogos2030))} sub="Google + Microsoft" />
             <Kpi label="Market penetration 2030" value={fmtPct(c.marketPenetration)} sub="of core market" />
-            <Kpi label="Whitespace 2030" value={fmtNum(Math.round(c.whitespace[4]))} sub="accounts open" />
+            <Kpi label="Leads / mo 2030" value={fmtNum(Math.round(c.leadsPerMonth2030))} sub="to hit intake" />
           </KpiStrip>
 
-          {/* Sections */}
+          {/* Sections — answer first: outcome, net case, then the drivers */}
+          <SectionOutcome params={params} set={set} c={c} dataset={dataset.data} />
+          <SectionInvest params={params} set={set} c={c} />
           <SectionLogos params={params} set={set} c={c} dataset={dataset.data} />
           <SectionMix params={params} set={set} c={c} dataset={dataset.data} />
           <SectionFunnel params={params} set={set} c={c} />
-          <SectionOutcome params={params} set={set} c={c} dataset={dataset.data} />
         </div>
       )}
     </main>
