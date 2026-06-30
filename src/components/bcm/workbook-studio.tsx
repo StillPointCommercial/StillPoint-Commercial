@@ -35,11 +35,13 @@ import {
 } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Slider, tbl, cx, pos } from '@/components/suite/ui'
 import { fmtEur, fmtM, fmtNum, fmtPct, fmtSignedM } from '@/lib/bcm/format'
-import { C, CAT, LinesChart, tipFmt, type SeriesDef, type Datum } from './charts'
+import { C, CAT, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
 import { SectionGrid, SliderGroupNote, yearRows } from './helpers'
 import {
   computeWorkbookRevenue,
   computeWorkbookMix,
+  computeWorkbookByMotion,
+  computeWorkbookCategoryRevenue,
   computeWorkbookFunnel,
   computeWorkbookCosts,
   deriveCostContext,
@@ -180,6 +182,16 @@ function patchLogoCount(inputs: WorkbookInputs, idx: number, year: number, value
     ),
   }
 }
+// Start month per stream/year (1..12); mirrors patchLogoCount but clamps to a valid month.
+function patchLogoStart(inputs: WorkbookInputs, idx: number, year: number, value: number): WorkbookInputs {
+  const month = Math.min(12, Math.max(1, Math.round(value)))
+  return {
+    ...inputs,
+    logos: inputs.logos.map((s, i) =>
+      i === idx ? { ...s, startMonths: s.startMonths.map((m, y) => (y === year ? month : m)) } : s,
+    ),
+  }
+}
 function patchCrossSell(inputs: WorkbookInputs, idx: number, year: number, value: number): WorkbookInputs {
   return {
     ...inputs,
@@ -306,6 +318,8 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // --- live recompute + read-only block parsing ---
   const revenue = useMemo(() => (inputs ? computeWorkbookRevenue(inputs) : null), [inputs])
   const mixCats = useMemo(() => (inputs ? computeWorkbookMix(inputs) : null), [inputs])
+  const byMotion = useMemo(() => (inputs ? computeWorkbookByMotion(inputs) : null), [inputs])
+  const catRevenue = useMemo(() => (inputs ? computeWorkbookCategoryRevenue(inputs) : null), [inputs])
   const funnel = useMemo(() => (inputs ? computeWorkbookFunnel(inputs) : null), [inputs])
   // LIVE P&L: baseline (frozen at load) + live new revenue/COGS from the current inputs.
   // Drives the KPI-strip EBIT and the Costs & P&L area, replacing the static snapshot.
@@ -932,28 +946,111 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </section>
       )}
 
-      {/* ── Revenue & mix: revenue + mix levers in the rail; charts lead; tables fold ── */}
-      {view === 'revenue' && mixCats && (
-        <SectionGrid
-          sliders={
-            <div className="space-y-5">
+      {/* ── Revenue & mix: CEO narrative, top-to-bottom — charts lead, inputs are inline ── */}
+      {view === 'revenue' && mixCats && byMotion && catRevenue && (
+        <section className="space-y-6">
+          {/* 1 — Where the growth comes from: by-motion split (new logos vs cross-sell) */}
+          <Panel
+            title="Where the growth comes from"
+            subtitle="New revenue 2027–2030, split by motion: landing new logos versus expanding existing accounts."
+          >
+            <StackedBarsChart
+              data={yearRows(byMotion.years, {
+                newLogos: byMotion.newLogos,
+                crossSell: byMotion.crossSell,
+              })}
+              xKey="year"
+              bars={[
+                { key: 'newLogos', name: 'New logos', color: CAT[0] },
+                { key: 'crossSell', name: 'Cross-sell & expansion', color: CAT[2] },
+              ]}
+              valueFmt="eur-m"
+            />
+            {(() => {
+              const total2030 = byMotion.total[last] ?? 0
+              const newPct = total2030 > 0 ? (byMotion.newLogos[last] ?? 0) / total2030 : 0
+              const crossPct = total2030 > 0 ? (byMotion.crossSell[last] ?? 0) / total2030 : 0
+              return (
+                <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
+                  New revenue {byMotion.years[last]} = <span className="font-semibold text-suite-ink">{fmtM(total2030)}</span>{' '}
+                  — {fmtPct(newPct, 0)} new logos / {fmtPct(crossPct, 0)} cross-sell.
+                </p>
+              )
+            })()}
+          </Panel>
+
+          {/* 2 — What we're selling: category revenue over time + 2030 mix doughnut */}
+          <Panel
+            title="What we're selling"
+            subtitle="New revenue by product category over 2027–2030, with the final-year mix at a glance."
+          >
+            <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+              <StackedAreaChart
+                data={yearRows(
+                  byMotion.years,
+                  Object.fromEntries(catRevenue.map((c, i) => [`c${i}`, c.perYear])),
+                )}
+                xKey="year"
+                series={catRevenue.map((c, i) => ({ key: `c${i}`, name: c.label, color: CAT[i % CAT.length] }))}
+                valueFmt="eur-m"
+              />
               <div>
-                <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">Logo streams</p>
-                {inputs.logos.map((s, idx) => (
-                  <div key={s.key} className={cx('py-3', idx > 0 && 'border-t border-suite-border')}>
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">
+                  {byMotion.years[last]} mix
+                </p>
+                <div style={{ width: '100%', height: 260 }}>
+                  <ResponsiveContainer>
+                    <PieChart>
+                      <Pie
+                        data={mixCats.map((c) => ({ name: c.label, value: c.share }))}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius="55%"
+                        outerRadius="80%"
+                        paddingAngle={1}
+                        stroke="#ffffff"
+                        strokeWidth={1}
+                        isAnimationActive={false}
+                        label={(e: { name?: string; value?: number }) => `${e.name} ${fmtPct(e.value ?? 0)}`}
+                      >
+                        {mixCats.map((_, i) => (
+                          <Cell key={i} fill={CAT[i % CAT.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip {...mixTooltipStyle} formatter={tipFmt((n) => fmtPct(n))} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          {/* 3 — The new-logo engine: one card per stream — price, growth, counts, start months */}
+          <Panel
+            title="The new-logo engine"
+            subtitle="Per stream: entry price, growth, how many logos you land each year and when they start. Drives everything above."
+          >
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {inputs.logos.map((s, idx) => {
+                const omz = revenue.logoOmzet[s.key]
+                const landed = (s.counts ?? []).reduce((acc, c) => acc + (c || 0), 0)
+                return (
+                  <div key={s.key} className="rounded-xl border border-suite-border bg-suite-bg p-4">
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{ backgroundColor: STREAM_COLORS[s.key] }}
                       />
-                      <span className="truncate text-xs font-medium text-suite-ink">{s.label}</span>
+                      <span className="truncate text-sm font-semibold text-suite-ink">{s.label}</span>
                     </div>
                     <Slider
                       label="Entry price"
                       value={s.instap}
                       min={0}
-                      max={1000000}
-                      step={5000}
+                      max={600000}
+                      step={10000}
                       onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { instap: v }) : p))}
                       format={(n) => fmtEur(n)}
                     />
@@ -961,66 +1058,64 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                       label="Growth / yr"
                       value={Math.round(s.growth * 100)}
                       min={0}
-                      max={50}
+                      max={40}
                       step={1}
                       onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { growth: v / 100 }) : p))}
                       format={(n) => `${n}%`}
                     />
-                    <div className="mt-2 grid grid-cols-4 gap-1.5">
-                      {revenue.years.map((y, yi) => (
-                        <label key={y} className="block">
-                          <span className="mb-0.5 block text-[10px] text-suite-ink-3">{y}</span>
-                          <NumCell
-                            value={s.counts[yi] ?? 0}
-                            onChange={(v) => setInputs((p) => (p ? patchLogoCount(p, idx, yi, v) : p))}
-                          />
-                        </label>
-                      ))}
+                    <div className="mt-3">
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-suite-ink-3">Counts / yr</p>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {revenue.years.map((y, yi) => (
+                          <label key={y} className="block">
+                            <span className="mb-0.5 block text-[10px] text-suite-ink-3">{y}</span>
+                            <NumCell
+                              value={s.counts[yi] ?? 0}
+                              onChange={(v) => setInputs((p) => (p ? patchLogoCount(p, idx, yi, v) : p))}
+                            />
+                          </label>
+                        ))}
+                      </div>
                     </div>
+                    <div className="mt-3">
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-suite-ink-3">Start month / yr</p>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {revenue.years.map((y, yi) => (
+                          <label key={y} className="block">
+                            <span className="mb-0.5 block text-[10px] text-suite-ink-3">{y}</span>
+                            <NumCell
+                              value={s.startMonths[yi] ?? 1}
+                              onChange={(v) => setInputs((p) => (p ? patchLogoStart(p, idx, yi, v) : p))}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <LinesChart
+                        data={yearRows(revenue.years, { omz })}
+                        xKey="year"
+                        series={[{ key: 'omz', name: 'Revenue', color: STREAM_COLORS[s.key] }]}
+                        valueFmt="eur-m"
+                        height={120}
+                      />
+                    </div>
+                    <p className="mt-2 border-t border-suite-border pt-2 text-[11px] text-suite-ink-3">
+                      Lands {fmtNum(landed)} logos 2027–2030.
+                    </p>
                   </div>
-                ))}
-                <SliderGroupNote>
-                  Entry price × new logos/yr (grown + prorated) — the same engine as the sheet. Set how each logo’s
-                  revenue splits across products with the mix sliders on the right; that feeds COGS. Edits recompute
-                  this page instantly.
-                </SliderGroupNote>
-              </div>
+                )
+              })}
             </div>
-          }
-        >
-          <Panel
-            title="Product mix — 2030 split"
-            subtitle="Share of the final year’s new-logo revenue, by product category — driven by the mix sliders below."
-          >
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={mixCats.map((c) => ({ name: c.label, value: c.share }))}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius="55%"
-                    outerRadius="80%"
-                    paddingAngle={1}
-                    stroke="#ffffff"
-                    strokeWidth={1}
-                    isAnimationActive={false}
-                    label={(e: { name?: string; value?: number }) => `${e.name} ${fmtPct(e.value ?? 0)}`}
-                  >
-                    {mixCats.map((_, i) => (
-                      <Cell key={i} fill={CAT[i % CAT.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip {...mixTooltipStyle} formatter={tipFmt((n) => fmtPct(n))} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <SliderGroupNote>
+              Entry price × new logos/yr (grown by the growth rate and prorated by start month) — the same engine as the
+              sheet. Edits recompute this page instantly.
+            </SliderGroupNote>
           </Panel>
 
+          {/* 4 — Product mix per logo: per-stream category split (kept as-is) */}
           <Panel
-            title="Product mix"
+            title="Product mix per logo"
             subtitle="For each logo stream, set how its revenue splits across the product categories. Keep each stream near 100%."
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1051,15 +1146,34 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               })}
             </div>
             <SliderGroupNote>
-              Entry price × new logos/yr (grown + prorated). Mix sets how each logo’s revenue splits across products and
-              feeds COGS.
+              Mix sets how each logo’s revenue splits across products and feeds COGS. On export, Google recomputes COGS
+              and margin per category from these weights.
             </SliderGroupNote>
           </Panel>
 
+          {/* 5 — Expansion & cross-sell (Blok 2): chart of each line, then the exact plan */}
           {inputs.crossSell.length > 0 && (
-            <Foldout label="Show cross-sell lines">
-              <p className="mb-3 text-xs text-suite-ink-3">Editable — feeds the entity totals + COGS.</p>
-              <div className="overflow-x-auto">
+            <Panel
+              title="Expansion & cross-sell (Blok 2)"
+              subtitle="The expansion plan into the existing base over 2027–2030 — one line per offer, including the irregular hardware waves."
+            >
+              <StackedBarsChart
+                data={revenue.years.map((y, yi) => {
+                  const row: Datum = { year: String(y) }
+                  inputs.crossSell.forEach((line, li) => {
+                    row[`x${li}`] = line.values[yi] ?? 0
+                  })
+                  return row
+                })}
+                xKey="year"
+                bars={inputs.crossSell.map((line, li) => ({
+                  key: `x${li}`,
+                  name: line.label || `Line ${li + 1}`,
+                  color: CAT[li % CAT.length],
+                }))}
+                valueFmt="eur-m"
+              />
+              <div className="mt-4 overflow-x-auto border-t border-suite-border pt-4">
                 <table className={tbl.table}>
                   <thead>
                     <tr>
@@ -1075,9 +1189,17 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                     {inputs.crossSell.map((line: CrossSellLine, idx) => (
                       <tr key={`${line.label}-${idx}`} className={tbl.tr}>
                         <td className={tbl.td}>
-                          <div className="font-medium text-suite-ink">{line.label || '—'}</div>
-                          <div className="text-[11px] text-suite-ink-3">
-                            {line.category} · {line.entity === 'naerby' ? 'Naerby' : 'Meevynd'}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: CAT[idx % CAT.length] }}
+                            />
+                            <div>
+                              <div className="font-medium text-suite-ink">{line.label || '—'}</div>
+                              <div className="text-[11px] text-suite-ink-3">
+                                {line.category} · {line.entity === 'naerby' ? 'Naerby' : 'Meevynd'}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         {revenue.years.map((y, yi) => (
@@ -1094,49 +1216,9 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                   </tbody>
                 </table>
               </div>
-            </Foldout>
+            </Panel>
           )}
-
-          <Foldout label="Show revenue by category">
-            <div className="overflow-x-auto">
-              <table className={tbl.table}>
-                <thead>
-                  <tr>
-                    <th className={tbl.th}>Category</th>
-                    {revenue.years.map((y) => (
-                      <th key={y} className={tbl.thR}>
-                        {y}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mixCats.map((c, i) => (
-                    <tr key={c.label} className={tbl.tr}>
-                      <td className={tbl.td}>
-                        <span className="inline-flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: CAT[i % CAT.length] }}
-                          />
-                          {c.label}
-                        </span>
-                      </td>
-                      {revenue.years.map((y, yi) => (
-                        <td key={y} className={tbl.tdR}>
-                          {fmtM(c.perYear[yi] ?? 0)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-3 border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
-              On export, Google recomputes COGS and margin per category from these weights.
-            </p>
-          </Foldout>
-        </SectionGrid>
+        </section>
       )}
 
       {/* ── Funnel: conversion + capacity sliders; the activity table stays visible ── */}

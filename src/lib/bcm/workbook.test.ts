@@ -3,6 +3,8 @@ import {
   computeWorkbookRevenue,
   computeWorkbookMix,
   computeWorkbookFunnel,
+  computeWorkbookByMotion,
+  computeWorkbookCategoryRevenue,
   parseWorkbookInputs,
   serializeWorkbookInputs,
   newCogsByEntity,
@@ -214,5 +216,22 @@ describe('workbook live cost / EBIT model (faithful to Marges + Dashboard)', () 
     }
     const grownEbit = computeWorkbookCosts(grown, ctx, ADAPTA_MARGES).groep.ebit[3]
     expect(grownEbit).toBeGreaterThan(baseEbit)
+  })
+})
+
+describe('workbook revenue split (by motion + by category)', () => {
+  it('by-motion split adds up to the group new total', () => {
+    const m = computeWorkbookByMotion(ADAPTA)
+    expect(m.total[3]).toBeCloseTo(12676362.5, 0)
+    expect(m.newLogos[3] + m.crossSell[3]).toBeCloseTo(m.total[3], 6)
+    expect(m.newLogos[3]).toBeGreaterThan(0)
+    expect(m.crossSell[3]).toBeGreaterThan(0)
+  })
+
+  it('category revenue sums to the group new total across several categories', () => {
+    const cats = computeWorkbookCategoryRevenue(ADAPTA)
+    const total2030 = cats.reduce((s, c) => s + c.perYear[3], 0)
+    expect(total2030).toBeCloseTo(12676362.5, 0)
+    expect(cats.length).toBeGreaterThan(5)
   })
 })

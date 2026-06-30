@@ -198,6 +198,44 @@ export function computeWorkbookMix(inp: WorkbookInputs): MixCategory[] {
   return cats
 }
 
+export interface MotionSplit {
+  years: number[]
+  newLogos: number[]
+  crossSell: number[]
+  total: number[]
+}
+
+/** New revenue split by motion: new-logo revenue (all streams) vs Blok-2 cross-sell. */
+export function computeWorkbookByMotion(inp: WorkbookInputs): MotionSplit {
+  const rev = computeWorkbookRevenue(inp)
+  const newLogos = SHEET_YEARS.map(
+    (_, y) => rev.logoOmzet.google[y] + rev.logoOmzet.microsoft[y] + rev.logoOmzet.puls[y],
+  )
+  const crossSell = SHEET_YEARS.map((_, y) => inp.crossSell.reduce((s, l) => s + (l.values[y] || 0), 0))
+  const total = SHEET_YEARS.map((_, y) => newLogos[y] + crossSell[y])
+  return { years: [...SHEET_YEARS], newLogos, crossSell, total }
+}
+
+export interface CategoryRevenue {
+  label: string
+  perYear: number[]
+}
+
+/** Full new-revenue split by product category: logo revenue distributed by the mix
+ *  PLUS each cross-sell line added to its own category. Mirrors "Omzet per categorie";
+ *  sums to totalNew. */
+export function computeWorkbookCategoryRevenue(inp: WorkbookInputs): CategoryRevenue[] {
+  const byCat = new Map<string, number[]>()
+  const add = (label: string, vals: number[]): void => {
+    const cur = byCat.get(label) ?? zeros()
+    for (let y = 0; y < N; y++) cur[y] += vals[y] || 0
+    byCat.set(label, cur)
+  }
+  for (const c of computeWorkbookMix(inp)) add(c.label, c.perYear)
+  for (const line of inp.crossSell) add(line.category || 'Overige', line.values)
+  return [...byCat.entries()].map(([label, perYear]) => ({ label, perYear }))
+}
+
 export interface FunnelStage {
   stage: string
   perYear: number[]
