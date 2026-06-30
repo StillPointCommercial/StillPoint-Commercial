@@ -25,7 +25,9 @@ export interface CopiedFile {
 
 /**
  * Make a native copy of a Drive file (e.g. a Google Sheet). The source is only read,
- * never modified. The copy lands in the authenticated user's Drive.
+ * never modified. The copy is placed in the user's My Drive root (parents: ['root'])
+ * so it is theirs to find and delete, instead of inheriting the source's parent folder
+ * (which is often a shared folder the user does not own and cannot tidy up).
  */
 export async function copyFile(
   accessToken: string,
@@ -40,7 +42,7 @@ export async function copyFile(
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name: newName }),
+      body: JSON.stringify({ name: newName, parents: ['root'] }),
     },
   )
   if (!res.ok) throw new Error(await driveError(res))
