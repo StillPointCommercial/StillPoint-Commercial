@@ -12,10 +12,12 @@ export type StreamKey = 'google' | 'microsoft' | 'puls'
 export interface LogoStream {
   key: StreamKey
   label: string
-  instap: number // entry revenue per client
+  instap: number // entry value: a new logo's year-1 ARR
   growth: number // growth %/yr as a fraction (0.15)
   counts: number[] // new logos per SHEET_YEARS
   startMonths: number[] // start month per SHEET_YEARS (1..12)
+  maxValue?: number // app-side ceiling: max total ARR a logo can reach (e.g. kern-ICP max 1M)
+  capPct?: number // plateau as % of maxValue (100 = up to the full max); absent = uncapped
 }
 
 export interface MixRow {
@@ -72,10 +74,12 @@ function addInto(acc: number[], add: number[]): void {
  * Matches Groeimotor L7:O9 exactly (e.g. 2x300000x1x(13-1)/12 = 600000).
  */
 export function streamOmzet(s: LogoStream): number[] {
-  return SHEET_YEARS.map(
-    (_, y) =>
-      (s.counts[y] || 0) * s.instap * Math.pow(1 + s.growth, y) * ((13 - (s.startMonths[y] || 1)) / 12),
-  )
+  // app-side realism ceiling on a logo's annual value; absent maxValue = uncapped (matches the sheet).
+  const ceiling = s.maxValue != null ? ((s.capPct ?? 100) / 100) * s.maxValue : Infinity
+  return SHEET_YEARS.map((_, y) => {
+    const perLogo = Math.min(s.instap * Math.pow(1 + s.growth, y), ceiling)
+    return (s.counts[y] || 0) * perLogo * ((13 - (s.startMonths[y] || 1)) / 12)
+  })
 }
 
 export function computeWorkbookRevenue(inp: WorkbookInputs): WorkbookRevenue {
@@ -134,6 +138,8 @@ export function parseWorkbookInputs(r: WorkbookRanges): WorkbookInputs {
       growth: num(row[1]),
       counts: [num(row[2]), num(row[3]), num(row[4]), num(row[5])],
       startMonths: [num(row[6]) || 1, num(row[7]) || 1, num(row[8]) || 1, num(row[9]) || 1],
+      maxValue: 1_000_000,
+      capPct: 100,
     }
   })
   const mix: MixRow[] = MIX_LABELS.map((label, ri) => {

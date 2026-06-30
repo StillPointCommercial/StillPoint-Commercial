@@ -5,6 +5,7 @@ import {
   computeWorkbookFunnel,
   computeWorkbookByMotion,
   computeWorkbookCategoryRevenue,
+  streamOmzet,
   parseWorkbookInputs,
   serializeWorkbookInputs,
   newCogsByEntity,
@@ -233,5 +234,18 @@ describe('workbook revenue split (by motion + by category)', () => {
     const total2030 = cats.reduce((s, c) => s + c.perYear[3], 0)
     expect(total2030).toBeCloseTo(12676362.5, 0)
     expect(cats.length).toBeGreaterThan(5)
+  })
+})
+
+describe('logo value ceiling (entry value + max total value + cap %)', () => {
+  it('is uncapped by default (matches the sheet) and plateaus at capPct% of maxValue', () => {
+    const capped = streamOmzet({
+      key: 'google', label: 'g', instap: 300000, growth: 0.15,
+      counts: [1, 1, 1, 1], startMonths: [1, 1, 1, 1], maxValue: 350000, capPct: 100,
+    })
+    expect(capped[0]).toBeCloseTo(300000, 0) // 300000 < 350000 ceiling
+    expect(capped[3]).toBeCloseTo(350000, 0) // 300000*1.15^3 = 456262.5 -> capped to 350000
+    // ADAPTA (no maxValue) stays uncapped and unchanged
+    expect(streamOmzet(ADAPTA.logos[0])[3]).toBeCloseTo(1368787.5, 0)
   })
 })

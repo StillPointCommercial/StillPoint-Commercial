@@ -31,6 +31,8 @@ import {
   Trash2,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Pencil,
 } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Slider, tbl, cx, pos } from '@/components/suite/ui'
@@ -314,6 +316,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // Active area. The compact header + KPI strip stay above this; only the active area
   // renders below the area nav.
   const [view, setView] = useState<WorkbookView>('scenarios')
+
+  // Revenue & mix layout state: collapse the compact input sidebar so the visuals go
+  // full-width, and a per-stream disclosure for the rarely-touched start-month row.
+  const [revSidebarCollapsed, setRevSidebarCollapsed] = useState(false)
+  const [revStartOpen, setRevStartOpen] = useState<Record<string, boolean>>({})
 
   // --- live recompute + read-only block parsing ---
   const revenue = useMemo(() => (inputs ? computeWorkbookRevenue(inputs) : null), [inputs])
@@ -946,129 +953,95 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </section>
       )}
 
-      {/* ── Revenue & mix: CEO narrative, top-to-bottom — charts lead, inputs are inline ── */}
+      {/* ── Revenue & mix: two-pane workspace — compact INPUT sidebar (left) feeds the ── */}
+      {/* ── large VISUALS pane (right); collapse the sidebar for a full-width graph view. ── */}
       {view === 'revenue' && mixCats && byMotion && catRevenue && (
-        <section className="space-y-6">
-          {/* 1 — Where the growth comes from: by-motion split (new logos vs cross-sell) */}
-          <Panel
-            title="Where the growth comes from"
-            subtitle="New revenue 2027–2030, split by motion: landing new logos versus expanding existing accounts."
-          >
-            <StackedBarsChart
-              data={yearRows(byMotion.years, {
-                newLogos: byMotion.newLogos,
-                crossSell: byMotion.crossSell,
-              })}
-              xKey="year"
-              bars={[
-                { key: 'newLogos', name: 'New logos', color: CAT[0] },
-                { key: 'crossSell', name: 'Cross-sell & expansion', color: CAT[2] },
-              ]}
-              valueFmt="eur-m"
-            />
-            {(() => {
-              const total2030 = byMotion.total[last] ?? 0
-              const newPct = total2030 > 0 ? (byMotion.newLogos[last] ?? 0) / total2030 : 0
-              const crossPct = total2030 > 0 ? (byMotion.crossSell[last] ?? 0) / total2030 : 0
-              return (
-                <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
-                  New revenue {byMotion.years[last]} = <span className="font-semibold text-suite-ink">{fmtM(total2030)}</span>{' '}
-                  — {fmtPct(newPct, 0)} new logos / {fmtPct(crossPct, 0)} cross-sell.
-                </p>
-              )
-            })()}
-          </Panel>
-
-          {/* 2 — What we're selling: category revenue over time + 2030 mix doughnut */}
-          <Panel
-            title="What we're selling"
-            subtitle="New revenue by product category over 2027–2030, with the final-year mix at a glance."
-          >
-            <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-              <StackedAreaChart
-                data={yearRows(
-                  byMotion.years,
-                  Object.fromEntries(catRevenue.map((c, i) => [`c${i}`, c.perYear])),
-                )}
-                xKey="year"
-                series={catRevenue.map((c, i) => ({ key: `c${i}`, name: c.label, color: CAT[i % CAT.length] }))}
-                valueFmt="eur-m"
-              />
-              <div>
-                <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">
-                  {byMotion.years[last]} mix
-                </p>
-                <div style={{ width: '100%', height: 260 }}>
-                  <ResponsiveContainer>
-                    <PieChart>
-                      <Pie
-                        data={mixCats.map((c) => ({ name: c.label, value: c.share }))}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius="55%"
-                        outerRadius="80%"
-                        paddingAngle={1}
-                        stroke="#ffffff"
-                        strokeWidth={1}
-                        isAnimationActive={false}
-                        label={(e: { name?: string; value?: number }) => `${e.name} ${fmtPct(e.value ?? 0)}`}
-                      >
-                        {mixCats.map((_, i) => (
-                          <Cell key={i} fill={CAT[i % CAT.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip {...mixTooltipStyle} formatter={tipFmt((n) => fmtPct(n))} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+        <section className="flex items-start gap-5">
+          {/* ── LEFT: compact, dense control panel — collapses to a thin re-open strip ── */}
+          {revSidebarCollapsed ? (
+            <button
+              onClick={() => setRevSidebarCollapsed(false)}
+              title="Show inputs"
+              className="flex shrink-0 items-center gap-1 self-stretch rounded-xl border border-suite-border bg-suite-bg px-1.5 py-3 text-[10px] font-medium uppercase tracking-wide text-suite-ink-3 transition-colors hover:bg-suite-subtle hover:text-suite-ink"
+            >
+              <ChevronRight size={14} className="shrink-0" />
+              <span className="[writing-mode:vertical-rl]">Inputs</span>
+            </button>
+          ) : (
+            <aside className="sticky top-20 max-h-[calc(100vh-6rem)] w-80 shrink-0 self-start overflow-y-auto overflow-x-hidden rounded-xl border border-suite-border bg-suite-bg">
+              <div className="flex items-center justify-between gap-2 border-b border-suite-border px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Inputs</span>
+                <button
+                  onClick={() => setRevSidebarCollapsed(true)}
+                  title="Hide inputs — full-width charts"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-suite-ink-3 transition-colors hover:bg-suite-subtle hover:text-suite-ink"
+                >
+                  Hide
+                  <ChevronLeft size={13} className="shrink-0" />
+                </button>
               </div>
-            </div>
-          </Panel>
 
-          {/* 3 — The new-logo engine: one card per stream — price, growth, counts, start months */}
-          <Panel
-            title="The new-logo engine"
-            subtitle="Per stream: entry price, growth, how many logos you land each year and when they start. Drives everything above."
-          >
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              {inputs.logos.map((s, idx) => {
-                const omz = revenue.logoOmzet[s.key]
-                const landed = (s.counts ?? []).reduce((acc, c) => acc + (c || 0), 0)
-                return (
-                  <div key={s.key} className="rounded-xl border border-suite-border bg-suite-bg p-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: STREAM_COLORS[s.key] }}
+              <div className="divide-y divide-suite-border">
+                {/* Per-stream block: value fields + growth slider + counts + start months */}
+                {inputs.logos.map((s, idx) => {
+                  const landed = (s.counts ?? []).reduce((acc, c) => acc + (c || 0), 0)
+                  const startOpen = revStartOpen[s.key] ?? false
+                  return (
+                    <div key={s.key} className="px-3 py-2.5">
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: STREAM_COLORS[s.key] }}
+                        />
+                        <span className="truncate text-xs font-semibold text-suite-ink">{s.label}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-suite-ink-3">{fmtNum(landed)} logos</span>
+                      </div>
+
+                      {/* Entry / Max / Cap — three tight value fields (not sliders) */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <label className="block">
+                          <span className="mb-0.5 block text-[9px] uppercase tracking-wide text-suite-ink-3">Entry</span>
+                          <NumCell
+                            value={s.instap}
+                            step={10000}
+                            onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { instap: v }) : p))}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-0.5 block text-[9px] uppercase tracking-wide text-suite-ink-3">Max</span>
+                          <NumCell
+                            value={s.maxValue ?? 0}
+                            step={50000}
+                            onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { maxValue: v }) : p))}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-0.5 block text-[9px] uppercase tracking-wide text-suite-ink-3">Cap %</span>
+                          <NumCell
+                            value={s.capPct ?? 100}
+                            step={5}
+                            onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { capPct: v }) : p))}
+                          />
+                        </label>
+                      </div>
+
+                      {/* Growth — single compact slider */}
+                      <Slider
+                        label="Growth / yr"
+                        value={Math.round(s.growth * 100)}
+                        min={0}
+                        max={40}
+                        step={1}
+                        onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { growth: v / 100 }) : p))}
+                        format={(n) => `${n}%`}
                       />
-                      <span className="truncate text-sm font-semibold text-suite-ink">{s.label}</span>
-                    </div>
-                    <Slider
-                      label="Entry price"
-                      value={s.instap}
-                      min={0}
-                      max={600000}
-                      step={10000}
-                      onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { instap: v }) : p))}
-                      format={(n) => fmtEur(n)}
-                    />
-                    <Slider
-                      label="Growth / yr"
-                      value={Math.round(s.growth * 100)}
-                      min={0}
-                      max={40}
-                      step={1}
-                      onChange={(v) => setInputs((p) => (p ? patchLogo(p, idx, { growth: v / 100 }) : p))}
-                      format={(n) => `${n}%`}
-                    />
-                    <div className="mt-3">
-                      <p className="mb-1 text-[10px] uppercase tracking-wide text-suite-ink-3">Counts / yr</p>
-                      <div className="grid grid-cols-4 gap-1.5">
+
+                      {/* Counts / yr — tight row of four */}
+                      <p className="mb-1 mt-0.5 text-[9px] uppercase tracking-wide text-suite-ink-3">Counts / yr</p>
+                      <div className="grid grid-cols-4 gap-1">
                         {revenue.years.map((y, yi) => (
                           <label key={y} className="block">
-                            <span className="mb-0.5 block text-[10px] text-suite-ink-3">{y}</span>
+                            <span className="mb-0.5 block text-center text-[9px] text-suite-ink-3">{y}</span>
                             <NumCell
                               value={s.counts[yi] ?? 0}
                               onChange={(v) => setInputs((p) => (p ? patchLogoCount(p, idx, yi, v) : p))}
@@ -1076,148 +1049,235 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                           </label>
                         ))}
                       </div>
+
+                      {/* Start months — hidden by default behind a minimal disclosure */}
+                      <button
+                        onClick={() => setRevStartOpen((o) => ({ ...o, [s.key]: !startOpen }))}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-suite-ink-3 transition-colors hover:text-suite-ink"
+                      >
+                        <ChevronDown
+                          size={11}
+                          className={cx('shrink-0 transition-transform', startOpen && 'rotate-180')}
+                        />
+                        start months
+                      </button>
+                      {startOpen && (
+                        <div className="mt-1 grid grid-cols-4 gap-1">
+                          {revenue.years.map((y, yi) => (
+                            <label key={y} className="block">
+                              <span className="mb-0.5 block text-center text-[9px] text-suite-ink-3">{y}</span>
+                              <NumCell
+                                value={s.startMonths[yi] ?? 1}
+                                onChange={(v) => setInputs((p) => (p ? patchLogoStart(p, idx, yi, v) : p))}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-3">
-                      <p className="mb-1 text-[10px] uppercase tracking-wide text-suite-ink-3">Start month / yr</p>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {revenue.years.map((y, yi) => (
-                          <label key={y} className="block">
-                            <span className="mb-0.5 block text-[10px] text-suite-ink-3">{y}</span>
-                            <NumCell
-                              value={s.startMonths[yi] ?? 1}
-                              onChange={(v) => setInputs((p) => (p ? patchLogoStart(p, idx, yi, v) : p))}
+                  )
+                })}
+
+                {/* Product mix — dense per-stream category weights */}
+                <div className="px-3 py-2.5">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Product mix</p>
+                  <div className="space-y-2.5">
+                    {MIX_STREAMS.map((stream) => {
+                      const sumPct = Math.round(
+                        inputs.mix.reduce((acc, row) => acc + (row[stream.key] ?? 0), 0) * 100,
+                      )
+                      return (
+                        <div key={stream.key}>
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-suite-ink-3">
+                              {stream.label}
+                            </span>
+                            <span
+                              className={cx(
+                                'text-[10px] tabular-nums',
+                                sumPct === 100 ? 'text-suite-ink-3' : 'text-suite-neg',
+                              )}
+                            >
+                              {sumPct}%
+                            </span>
+                          </div>
+                          {inputs.mix.map((row, mi) => (
+                            <Slider
+                              key={`${stream.key}-${mixCats[mi]?.label ?? row.label ?? mi}`}
+                              label={row.label}
+                              value={Math.round((row[stream.key] ?? 0) * 100)}
+                              min={0}
+                              max={100}
+                              step={5}
+                              onChange={(v) => setInputs((p) => (p ? patchMix(p, mi, stream.key, v / 100) : p))}
+                              format={(n) => `${n}%`}
                             />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <LinesChart
-                        data={yearRows(revenue.years, { omz })}
-                        xKey="year"
-                        series={[{ key: 'omz', name: 'Revenue', color: STREAM_COLORS[s.key] }]}
-                        valueFmt="eur-m"
-                        height={120}
-                      />
-                    </div>
-                    <p className="mt-2 border-t border-suite-border pt-2 text-[11px] text-suite-ink-3">
-                      Lands {fmtNum(landed)} logos 2027–2030.
-                    </p>
+                          ))}
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
-            </div>
-            <SliderGroupNote>
-              Entry price × new logos/yr (grown by the growth rate and prorated by start month) — the same engine as the
-              sheet. Edits recompute this page instantly.
-            </SliderGroupNote>
-          </Panel>
+                </div>
+              </div>
+            </aside>
+          )}
 
-          {/* 4 — Product mix per logo: per-stream category split (kept as-is) */}
-          <Panel
-            title="Product mix per logo"
-            subtitle="For each logo stream, set how its revenue splits across the product categories. Keep each stream near 100%."
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {MIX_STREAMS.map((stream) => {
-                const sumPct = Math.round(
-                  inputs.mix.reduce((acc, row) => acc + (row[stream.key] ?? 0), 0) * 100,
-                )
-                return (
-                  <div key={stream.key} className="rounded-xl border border-suite-border bg-suite-bg p-4">
-                    <p className="mb-1 text-sm font-semibold text-suite-ink">{stream.label}</p>
-                    {inputs.mix.map((row, idx) => (
-                      <Slider
-                        key={mixCats[idx]?.label ?? row.label ?? idx}
-                        label={inputs.mix[idx].label}
-                        value={Math.round((row[stream.key] ?? 0) * 100)}
-                        min={0}
-                        max={100}
-                        step={5}
-                        onChange={(v) => setInputs((p) => (p ? patchMix(p, idx, stream.key, v / 100) : p))}
-                        format={(n) => `${n}%`}
-                      />
-                    ))}
-                    <p className="mt-2 border-t border-suite-border pt-2 text-[11px] text-suite-ink-3">
-                      sums to {sumPct}%
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-            <SliderGroupNote>
-              Mix sets how each logo’s revenue splits across products and feeds COGS. On export, Google recomputes COGS
-              and margin per category from these weights.
-            </SliderGroupNote>
-          </Panel>
-
-          {/* 5 — Expansion & cross-sell (Blok 2): chart of each line, then the exact plan */}
-          {inputs.crossSell.length > 0 && (
+          {/* ── RIGHT: the visuals — the focus, large and full-width when collapsed ── */}
+          <div className="min-w-0 flex-1 space-y-5">
+            {/* 1 — Where the growth comes from: new logos vs cross-sell */}
             <Panel
-              title="Expansion & cross-sell (Blok 2)"
-              subtitle="The expansion plan into the existing base over 2027–2030 — one line per offer, including the irregular hardware waves."
+              title="Where the growth comes from"
+              subtitle="New revenue 2027–2030, split by motion: landing new logos versus expanding existing accounts."
             >
               <StackedBarsChart
-                data={revenue.years.map((y, yi) => {
-                  const row: Datum = { year: String(y) }
-                  inputs.crossSell.forEach((line, li) => {
-                    row[`x${li}`] = line.values[yi] ?? 0
-                  })
-                  return row
+                data={yearRows(byMotion.years, {
+                  newLogos: byMotion.newLogos,
+                  crossSell: byMotion.crossSell,
                 })}
                 xKey="year"
-                bars={inputs.crossSell.map((line, li) => ({
-                  key: `x${li}`,
-                  name: line.label || `Line ${li + 1}`,
-                  color: CAT[li % CAT.length],
-                }))}
+                bars={[
+                  { key: 'newLogos', name: 'New logos', color: CAT[0] },
+                  { key: 'crossSell', name: 'Cross-sell & expansion', color: CAT[2] },
+                ]}
                 valueFmt="eur-m"
+                height={300}
               />
-              <div className="mt-4 overflow-x-auto border-t border-suite-border pt-4">
-                <table className={tbl.table}>
-                  <thead>
-                    <tr>
-                      <th className={tbl.th}>Line</th>
-                      {revenue.years.map((y) => (
-                        <th key={y} className={tbl.thR}>
-                          {y}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inputs.crossSell.map((line: CrossSellLine, idx) => (
-                      <tr key={`${line.label}-${idx}`} className={tbl.tr}>
-                        <td className={tbl.td}>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: CAT[idx % CAT.length] }}
-                            />
-                            <div>
-                              <div className="font-medium text-suite-ink">{line.label || '—'}</div>
-                              <div className="text-[11px] text-suite-ink-3">
-                                {line.category} · {line.entity === 'naerby' ? 'Naerby' : 'Meevynd'}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        {revenue.years.map((y, yi) => (
-                          <td key={y} className="px-3 py-2">
-                            <NumCell
-                              value={line.values[yi] ?? 0}
-                              step={5000}
-                              onChange={(v) => setInputs((p) => (p ? patchCrossSell(p, idx, yi, v) : p))}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {(() => {
+                const total2030 = byMotion.total[last] ?? 0
+                const newPct = total2030 > 0 ? (byMotion.newLogos[last] ?? 0) / total2030 : 0
+                const crossPct = total2030 > 0 ? (byMotion.crossSell[last] ?? 0) / total2030 : 0
+                return (
+                  <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
+                    New revenue {byMotion.years[last]} ={' '}
+                    <span className="font-semibold text-suite-ink">{fmtM(total2030)}</span> — {fmtPct(newPct, 0)} new
+                    logos / {fmtPct(crossPct, 0)} cross-sell.
+                  </p>
+                )
+              })()}
+            </Panel>
+
+            {/* 2 — What we're selling: category revenue over time + 2030 mix doughnut */}
+            <Panel
+              title="What we're selling"
+              subtitle="New revenue by product category over 2027–2030, with the final-year mix at a glance."
+            >
+              <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+                <StackedAreaChart
+                  data={yearRows(
+                    byMotion.years,
+                    Object.fromEntries(catRevenue.map((c, i) => [`c${i}`, c.perYear])),
+                  )}
+                  xKey="year"
+                  series={catRevenue.map((c, i) => ({ key: `c${i}`, name: c.label, color: CAT[i % CAT.length] }))}
+                  valueFmt="eur-m"
+                  height={300}
+                />
+                <div>
+                  <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">{byMotion.years[last]} mix</p>
+                  <div style={{ width: '100%', height: 280 }}>
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Pie
+                          data={mixCats.map((c) => ({ name: c.label, value: c.share }))}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius="55%"
+                          outerRadius="80%"
+                          paddingAngle={1}
+                          stroke="#ffffff"
+                          strokeWidth={1}
+                          isAnimationActive={false}
+                          label={(e: { name?: string; value?: number }) => `${e.name} ${fmtPct(e.value ?? 0)}`}
+                        >
+                          {mixCats.map((_, i) => (
+                            <Cell key={i} fill={CAT[i % CAT.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip {...mixTooltipStyle} formatter={tipFmt((n) => fmtPct(n))} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
             </Panel>
-          )}
+
+            {/* 3 — Expansion & cross-sell (Blok 2): tall contribution chart; values fold away */}
+            {inputs.crossSell.length > 0 && (
+              <Panel
+                title="Expansion & cross-sell (Blok 2)"
+                subtitle="The expansion plan into the existing base over 2027–2030 — one line per offer, including the irregular hardware waves."
+              >
+                <div className="h-96">
+                  <StackedBarsChart
+                    data={revenue.years.map((y, yi) => {
+                      const row: Datum = { year: String(y) }
+                      inputs.crossSell.forEach((line, li) => {
+                        row[`x${li}`] = line.values[yi] ?? 0
+                      })
+                      return row
+                    })}
+                    xKey="year"
+                    bars={inputs.crossSell.map((line, li) => ({
+                      key: `x${li}`,
+                      name: line.label || `Line ${li + 1}`,
+                      color: CAT[li % CAT.length],
+                    }))}
+                    valueFmt="eur-m"
+                    height={384}
+                  />
+                </div>
+                <div className="mt-4">
+                  <Foldout label="Show values">
+                    <div className="overflow-x-auto">
+                      <table className={tbl.table}>
+                        <thead>
+                          <tr>
+                            <th className={tbl.th}>Line</th>
+                            {revenue.years.map((y) => (
+                              <th key={y} className={tbl.thR}>
+                                {y}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inputs.crossSell.map((line: CrossSellLine, idx) => (
+                            <tr key={`${line.label}-${idx}`} className={tbl.tr}>
+                              <td className={tbl.td}>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                    style={{ backgroundColor: CAT[idx % CAT.length] }}
+                                  />
+                                  <div>
+                                    <div className="font-medium text-suite-ink">{line.label || '—'}</div>
+                                    <div className="text-[11px] text-suite-ink-3">
+                                      {line.category} · {line.entity === 'naerby' ? 'Naerby' : 'Meevynd'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              {revenue.years.map((y, yi) => (
+                                <td key={y} className="px-3 py-2">
+                                  <NumCell
+                                    value={line.values[yi] ?? 0}
+                                    step={5000}
+                                    onChange={(v) => setInputs((p) => (p ? patchCrossSell(p, idx, yi, v) : p))}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Foldout>
+                </div>
+              </Panel>
+            )}
+          </div>
         </section>
       )}
 
