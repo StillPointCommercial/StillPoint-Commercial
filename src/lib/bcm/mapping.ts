@@ -51,7 +51,7 @@ export const ADAPTA_MAPPING: SheetMapping = {
     crossSellLabels: 'Groeimotor!A21:B29',
   },
   readBlocks: {
-    dashboard: 'Dashboard!A5:E49',
+    dashboard: 'Dashboard!A4:E49',
     personnelTotals: 'Personeel!A57:I60',
     personnelRoster: 'Personeel!A3:K36',
     scenarioPaths: 'Scenario!A8:F11',

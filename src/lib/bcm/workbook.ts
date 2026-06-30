@@ -43,7 +43,7 @@ export interface FunnelParams {
   leadCapacity: number // qualified leads we can generate, per year
 }
 
-export const DEFAULT_FUNNEL: FunnelParams = { cSL: 45, cLD: 55, cDD: 55, cDV: 60, cVC: 50, leadCapacity: 80 }
+export const DEFAULT_FUNNEL: FunnelParams = { cSL: 25, cLD: 35, cDD: 50, cDV: 75, cVC: 85, leadCapacity: 250 }
 
 export interface WorkbookInputs {
   logos: LogoStream[]
