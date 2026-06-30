@@ -379,6 +379,10 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // full-width, and a per-stream disclosure for the rarely-touched start-month row.
   const [revSidebarCollapsed, setRevSidebarCollapsed] = useState(false)
   const [revStartOpen, setRevStartOpen] = useState<Record<string, boolean>>({})
+  // Per-stream detail + product-mix collapse so the Revenue sidebar defaults to a clean
+  // list of stream names; the value/growth/count inputs appear only when unfolded.
+  const [revStreamOpen, setRevStreamOpen] = useState<Record<string, boolean>>({})
+  const [revMixOpen, setRevMixOpen] = useState(false)
 
   // --- live recompute + read-only block parsing ---
   const revenue = useMemo(() => (inputs ? computeWorkbookRevenue(inputs) : null), [inputs])
@@ -1108,16 +1112,27 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 {inputs.logos.map((s, idx) => {
                   const landed = (s.counts ?? []).reduce((acc, c) => acc + (c || 0), 0)
                   const startOpen = revStartOpen[s.key] ?? false
+                  const streamOpen = revStreamOpen[s.key] ?? false
                   return (
                     <div key={s.key} className="px-3 py-2.5">
-                      <div className="mb-1.5 flex items-center gap-1.5">
+                      <button
+                        onClick={() => setRevStreamOpen((o) => ({ ...o, [s.key]: !streamOpen }))}
+                        className="flex w-full items-center gap-1.5 text-left"
+                      >
                         <span
                           className="h-2 w-2 shrink-0 rounded-full"
                           style={{ backgroundColor: STREAM_COLORS[s.key] }}
                         />
                         <span className="truncate text-xs font-semibold text-suite-ink">{s.label}</span>
                         <span className="ml-auto shrink-0 text-[10px] text-suite-ink-3">{fmtNum(landed)} logos</span>
-                      </div>
+                        <ChevronDown
+                          size={12}
+                          className={cx('shrink-0 text-suite-ink-3 transition-transform', streamOpen && 'rotate-180')}
+                        />
+                      </button>
+
+                      {streamOpen && (
+                        <div className="mt-2">
 
                       {/* Entry / Max / Cap · three tight value fields (not sliders) */}
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1196,14 +1211,26 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                           ))}
                         </div>
                       )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
 
-                {/* Product mix · dense per-stream category weights */}
+                {/* Product mix · collapsed by default to keep the sidebar clean */}
                 <div className="px-3 py-2.5">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Product mix</p>
-                  <div className="space-y-2.5">
+                  <button
+                    onClick={() => setRevMixOpen((o) => !o)}
+                    className="flex w-full items-center gap-1.5"
+                  >
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Product mix</span>
+                    <ChevronDown
+                      size={12}
+                      className={cx('ml-auto shrink-0 text-suite-ink-3 transition-transform', revMixOpen && 'rotate-180')}
+                    />
+                  </button>
+                  {revMixOpen && (
+                  <div className="mt-2 space-y-2.5">
                     {MIX_STREAMS.map((stream) => {
                       const sumPct = Math.round(
                         inputs.mix.reduce((acc, row) => acc + (row[stream.key] ?? 0), 0) * 100,
@@ -1239,6 +1266,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                       )
                     })}
                   </div>
+                  )}
                 </div>
               </div>
             </aside>
@@ -1290,7 +1318,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 />
                 <div>
                   <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">{byMotion.years[last]} mix</p>
-                  <div style={{ width: '100%', height: 280 }}>
+                  <div style={{ width: '100%', height: 200 }}>
                     <ResponsiveContainer>
                       <PieChart>
                         <Pie
@@ -1299,13 +1327,12 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                           nameKey="name"
                           cx="50%"
                           cy="50%"
-                          innerRadius="55%"
-                          outerRadius="80%"
+                          innerRadius="58%"
+                          outerRadius="88%"
                           paddingAngle={1}
                           stroke="#ffffff"
                           strokeWidth={1}
                           isAnimationActive={false}
-                          label={(e: { name?: string; value?: number }) => `${e.name} ${fmtPct(e.value ?? 0)}`}
                         >
                           {mixCats.map((_, i) => (
                             <Cell key={i} fill={CAT[i % CAT.length]} />
@@ -1315,6 +1342,16 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
+                  {/* Legend with full names + shares (the donut's outside labels were clipping) */}
+                  <ul className="mt-2 space-y-1">
+                    {mixCats.map((c, i) => (
+                      <li key={c.label} className="flex items-center gap-1.5 text-[11px] text-suite-ink-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CAT[i % CAT.length] }} />
+                        <span className="truncate">{c.label}</span>
+                        <span className="ml-auto shrink-0 tabular-nums text-suite-ink">{fmtPct(c.share)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </Panel>
