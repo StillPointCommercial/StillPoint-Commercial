@@ -13,10 +13,10 @@ export interface MarketTier {
 }
 
 export const ADAPTA_MARKET: MarketTier[] = [
-  { key: 'tam', label: 'TAM — ICP-aangrenzend', orgs: 1224, perYear: 183_600_000, threeYear: 550_800_000, note: 'NL VVT + Gehandicapten + GGZ + aangrenzend' },
-  { key: 'sam', label: 'SAM — kern-ICP', orgs: 220, perYear: 220_000_000, threeYear: 660_000_000, note: 'VVT-stichtingen 800-15K medewerkers (≈ €1M ARR elk)' },
-  { key: 'som5', label: 'SOM — 5% share, 3 jr', orgs: 11, perYear: 11_000_000, threeYear: 33_000_000, note: '11 nieuwe klanten à €1M ARR' },
-  { key: 'som3', label: 'SOM — 3% conservatief', orgs: 7, perYear: 7_000_000, threeYear: 21_000_000, note: '7 nieuwe klanten à €1M ARR' },
+  { key: 'tam', label: 'TAM: ICP-aangrenzend', orgs: 1224, perYear: 183_600_000, threeYear: 550_800_000, note: 'NL VVT + Gehandicapten + GGZ + aangrenzend' },
+  { key: 'sam', label: 'SAM: kern-ICP', orgs: 220, perYear: 220_000_000, threeYear: 660_000_000, note: 'VVT-stichtingen 800-15K medewerkers (≈ €1M ARR elk)' },
+  { key: 'som5', label: 'SOM: 5% share, 3 jr', orgs: 11, perYear: 11_000_000, threeYear: 33_000_000, note: '11 nieuwe klanten à €1M ARR' },
+  { key: 'som3', label: 'SOM: 3% conservatief', orgs: 7, perYear: 7_000_000, threeYear: 21_000_000, note: '7 nieuwe klanten à €1M ARR' },
 ]
 
 /** Average addressable ARR per org in a tier. */

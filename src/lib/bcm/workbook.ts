@@ -42,7 +42,7 @@ export interface CrossSellLine {
   values: number[] // per SHEET_YEARS
 }
 
-/** App-side funnel/conversion assumptions — NOT in the sheet. Defaulted on import,
+/** App-side funnel/conversion assumptions, NOT in the sheet. Defaulted on import,
  *  editable, persisted per scenario, and written to the Funnel tab on export. */
 export interface FunnelParams {
   cSL: number // lead -> suspect %
@@ -346,7 +346,7 @@ export interface CostContext {
   groep: EntityCostBase
   /** Authoritative baseline personnel per entity per year, straight from the Dashboard. */
   basePersonnel: { meevynd: number[]; naerby: number[]; holding: number[] }
-  /** The roster exactly as imported — the reference allocation for computing live deltas. */
+  /** The roster exactly as imported, the reference allocation for computing live deltas. */
   baseRoster: RosterRole[]
 }
 
@@ -467,7 +467,7 @@ export function deriveCostContext(
  * The live pct comes from `inp.roster` (matched by index to `ctx.baseRoster`); the base
  * pct from `ctx.baseRoster`. With no roster (or identical pct) the deltas are zero, so
  * live personnel == basePersonnel and the EBIT is unchanged. Because a role's cost is a
- * fixed amount merely redistributed across entities, the deltas sum to zero — re-allocation
+ * fixed amount merely redistributed across entities, the deltas sum to zero, re-allocation
  * is zero-sum across entities and the GROUP personnel (hence group EBIT) is preserved.
  */
 export function personnelByEntity(

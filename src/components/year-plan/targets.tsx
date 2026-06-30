@@ -172,7 +172,7 @@ export function YearPlanTargets({ plan, onSave }: Props) {
                       </span>
                     </div>
                     <p className="text-xs text-text-light">
-                      &euro;{offer.price_from.toLocaleString()}{offer.price_to ? ` – €${offer.price_to.toLocaleString()}` : ''}{offer.revenue_type === 'recurring' ? '/mo' : ''}
+                      &euro;{offer.price_from.toLocaleString()}{offer.price_to ? ` - €${offer.price_to.toLocaleString()}` : ''}{offer.revenue_type === 'recurring' ? '/mo' : ''}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -225,7 +225,7 @@ export function YearPlanTargets({ plan, onSave }: Props) {
               <p className="text-xs text-text-light px-3">
                 {Math.round(offerTargetRevenue / form.revenue_target * 100)}% of revenue target covered
                 {offerTargetRevenue < form.revenue_target && (
-                  <span className="text-caution-amber"> — &euro;{(form.revenue_target - offerTargetRevenue).toLocaleString()} unallocated</span>
+                  <span className="text-caution-amber">, &euro;{(form.revenue_target - offerTargetRevenue).toLocaleString()} unallocated</span>
                 )}
               </p>
             )}

@@ -46,7 +46,7 @@ export default function OffersPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-dm-serif text-2xl text-charcoal">Offers</h1>
-          <p className="text-sm text-text-light mt-1">Your service catalog — what you sell and at what price.</p>
+          <p className="text-sm text-text-light mt-1">Your service catalog: what you sell and at what price.</p>
         </div>
       </div>
 
@@ -85,7 +85,7 @@ export default function OffersPage() {
                 <div className="flex gap-4 mt-1 text-xs text-text-light">
                   <span>
                     &euro;{offer.price_from.toLocaleString()}
-                    {offer.price_to ? ` – €${offer.price_to.toLocaleString()}` : ''}
+                    {offer.price_to ? ` - €${offer.price_to.toLocaleString()}` : ''}
                     {offer.revenue_type === 'recurring' ? '/mo' : ''}
                   </span>
                   {offer.typical_duration_months && (

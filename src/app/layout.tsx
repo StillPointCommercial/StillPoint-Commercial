@@ -19,7 +19,7 @@ const dmSerifDisplay = DM_Serif_Display({
 
 export const metadata: Metadata = {
   title: 'StillPoint CIS',
-  description: 'Commercial Intelligence System — StillPoint Commercial Partners',
+  description: 'Commercial Intelligence System, StillPoint Commercial Partners',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

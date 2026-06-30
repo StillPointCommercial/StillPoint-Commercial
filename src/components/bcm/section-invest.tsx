@@ -80,12 +80,12 @@ export function SectionInvest({
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
             label="Payback"
-            value={c.paybackYear ? `${c.paybackYear}` : '—'}
+            value={c.paybackYear ? `${c.paybackYear}` : '·'}
             sub={c.paybackMonths ? `~${c.paybackMonths} mo from 2026` : 'beyond 2030'}
           />
           <Stat label="ROI" value={`${c.roi.toFixed(1)}×`} sub="contribution ÷ GTM cost" />
           <Stat label="Net by 2030" value={fmtM(c.netByEnd)} sub="cumulative cash" accent />
-          <Stat label="GTM cost total" value={fmtM(c.totalGtmCost)} sub="2026–2030" />
+          <Stat label="GTM cost total" value={fmtM(c.totalGtmCost)} sub="2026-2030" />
         </div>
 
         <Panel title="Cumulative cash (the J-curve)" subtitle="net cash position after go-to-market cost">

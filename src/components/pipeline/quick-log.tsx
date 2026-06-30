@@ -65,7 +65,7 @@ export function QuickLog({ open, onClose, opportunity }: QuickLogProps) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Quick Log — ${opportunity.title}`}>
+    <Modal open={open} onClose={onClose} title={`Quick Log: ${opportunity.title}`}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <Select
           label="Type"

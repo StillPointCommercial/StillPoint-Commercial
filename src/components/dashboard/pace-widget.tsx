@@ -50,7 +50,7 @@ export function PaceWidget() {
   const yearPct = Math.round(quarterProgress * 25 + currentQuarter * 25)
   const pipelineCoverage = (plan.revenue_target - wonRevenue) > 0
     ? (pipelineValue / (plan.revenue_target - wonRevenue)).toFixed(1)
-    : '—'
+    : '·'
 
   // Count proposals out
   const proposalsOut = yearOpps.filter(o => o.stage === 'proposal').length

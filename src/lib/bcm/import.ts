@@ -1,4 +1,4 @@
-// Business Case Model — Excel "Forecast" workbook importer.
+// Business Case Model: Excel "Forecast" workbook importer.
 // Maps the standard forecast sheet onto a Dataset, falling back to ADAPTA for
 // anything missing or unmapped (each fallback adds a non-blocking warning).
 import * as XLSX from 'xlsx'
@@ -60,7 +60,7 @@ export async function parseForecastWorkbook(
   const wb = XLSX.read(await file.arrayBuffer())
   const sheetName = wb.SheetNames.includes('Forecast') ? 'Forecast' : wb.SheetNames[0]
   if (sheetName !== 'Forecast') {
-    warnings.push(`Sheet "Forecast" not found — using "${sheetName ?? '(none)'}".`)
+    warnings.push(`Sheet "Forecast" not found, using "${sheetName ?? '(none)'}".`)
   }
   const sheet = sheetName ? wb.Sheets[sheetName] : undefined
   const rows: Row[] = sheet
@@ -79,7 +79,7 @@ export async function parseForecastWorkbook(
       productLines[key] = pad5(cells)
     } else {
       productLines[key] = [...ADAPTA.productLines[key]]
-      warnings.push(`Row for "${needles[0]}" missing or incomplete — using sample data.`)
+      warnings.push(`Row for "${needles[0]}" missing or incomplete, using sample data.`)
     }
   }
 
@@ -91,7 +91,7 @@ export async function parseForecastWorkbook(
     baseline = baselineCells[0]
   } else {
     baseline = ADAPTA.baseline
-    warnings.push('No "baseline" row found — using sample baseline.')
+    warnings.push('No "baseline" row found, using sample baseline.')
   }
 
   // --- motion (derived element-wise from the mapped product lines) ---

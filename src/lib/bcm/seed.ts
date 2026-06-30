@@ -1,4 +1,4 @@
-// Business Case Model — canonical Adapta dataset (ships so the tool works before any import).
+// Business Case Model: canonical Adapta dataset (ships so the tool works before any import).
 import type { Dataset } from './types'
 
 export const ADAPTA: Dataset = {

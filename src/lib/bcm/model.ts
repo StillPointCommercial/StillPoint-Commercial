@@ -1,4 +1,4 @@
-// Business Case Model — pure math. No side effects; fully unit-tested.
+// Business Case Model: pure math. No side effects; fully unit-tested.
 import type { Dataset, Params, Computed, FunnelRow, MarginKey } from './types'
 
 export function sum(a: number[]): number {

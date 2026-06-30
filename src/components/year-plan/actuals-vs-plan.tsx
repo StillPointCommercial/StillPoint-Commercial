@@ -144,7 +144,7 @@ export function ActualsVsPlan({ plan, calc, opportunities, contacts, timelineEnt
         </div>
         <div className="bg-cream border border-border rounded-card p-4">
           <p className="text-xs text-text-light mb-1">Avg Interactions/Deal</p>
-          <p className="text-2xl font-medium text-charcoal">{avgInteractionsPerDeal || '—'}</p>
+          <p className="text-2xl font-medium text-charcoal">{avgInteractionsPerDeal || '·'}</p>
           <p className="text-[10px] text-text-light mt-0.5">Industry avg: 8 touchpoints</p>
         </div>
       </div>

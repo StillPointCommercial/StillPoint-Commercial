@@ -1,7 +1,7 @@
 'use client'
 
 // Shared recharts theme + small wrappers for the Business Case Model.
-// Every value passed in must originate from compute()/dataset — these helpers
+// Every value passed in must originate from compute()/dataset; these helpers
 // only shape rows and style, never invent numbers.
 import { type ReactNode } from 'react'
 import {
@@ -40,17 +40,17 @@ export const C = {
 
 /**
  * Distinct categorical palette for the 7 product-mix categories, in the order
- * lic, beheer, omsorg, bereik, hardware, puls, grund — teal, blue, amber,
+ * lic, beheer, omsorg, bereik, hardware, puls, grund: teal, blue, amber,
  * violet, terracotta, green, slate. Extends past 7 if a chart needs more.
  */
 export const CAT = [
-  '#2a7d72', // teal     — lic
-  '#3f6fb0', // blue     — beheer
-  '#e0a52e', // amber    — omsorg
-  '#8b5cf6', // violet   — bereik
-  '#cf5d4e', // terracotta — hardware
-  '#4f9d69', // green    — puls
-  '#64748b', // slate    — grund
+  '#2a7d72', // teal       lic
+  '#3f6fb0', // blue       beheer
+  '#e0a52e', // amber      omsorg
+  '#8b5cf6', // violet     bereik
+  '#cf5d4e', // terracotta hardware
+  '#4f9d69', // green      puls
+  '#64748b', // slate      grund
   '#0e9aa7',
   '#b4699e',
   '#9a8c4a',

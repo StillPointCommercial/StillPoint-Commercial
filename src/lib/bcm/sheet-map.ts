@@ -66,7 +66,7 @@ export function rowsToDataset(rows: string[][]): { dataset: Dataset; warnings: s
       productLines[key] = pad5(cells)
     } else {
       productLines[key] = [...ADAPTA.productLines[key]]
-      warnings.push(`Row for "${needles[0]}" missing or incomplete — using sample data.`)
+      warnings.push(`Row for "${needles[0]}" missing or incomplete, using sample data.`)
     }
   }
 
@@ -78,7 +78,7 @@ export function rowsToDataset(rows: string[][]): { dataset: Dataset; warnings: s
     baseline = baselineCells[0]
   } else {
     baseline = ADAPTA.baseline
-    warnings.push('No "baseline" row found — using sample baseline.')
+    warnings.push('No "baseline" row found, using sample baseline.')
   }
 
   // --- motion (derived element-wise from the mapped product lines) ---

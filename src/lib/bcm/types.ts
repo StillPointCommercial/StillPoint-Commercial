@@ -1,4 +1,4 @@
-// Business Case Model — types
+// Business Case Model: types
 
 export type Tier = 'laag' | 'mid' | 'hoog'
 

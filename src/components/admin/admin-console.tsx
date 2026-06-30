@@ -140,8 +140,8 @@ function UsersSection({ profiles }: { profiles: AdminProfile[] }) {
             {profiles.map((p) => (
               <tr key={p.id} className={tbl.tr}>
                 <td className={tbl.td}>{nameOf(p)}</td>
-                <td className={tbl.tdMuted}>{p.email ?? '—'}</td>
-                <td className={tbl.tdMuted}>{p.org ?? '—'}</td>
+                <td className={tbl.tdMuted}>{p.email ?? '·'}</td>
+                <td className={tbl.tdMuted}>{p.org ?? '·'}</td>
                 <td className={tbl.td}>
                   <Chip tone={p.role === 'owner' ? 'dark' : 'neutral'}>{p.role}</Chip>
                 </td>
@@ -208,7 +208,7 @@ function MembersSection({ orgs, profiles }: { orgs: AdminOrg[]; profiles: AdminP
                     {g.members.map((p) => (
                       <tr key={p.id} className={tbl.tr}>
                         <td className={tbl.td}>{nameOf(p)}</td>
-                        <td className={tbl.tdMuted}>{p.email ?? '—'}</td>
+                        <td className={tbl.tdMuted}>{p.email ?? '·'}</td>
                         <td className={tbl.td}>
                           <Chip tone={p.role === 'owner' ? 'dark' : 'neutral'}>{p.role}</Chip>
                         </td>

@@ -1,4 +1,4 @@
-// Google Sheets v4 REST helpers (SERVER-ONLY — never import from a 'use client' file).
+// Google Sheets v4 REST helpers (SERVER-ONLY, never import from a 'use client' file).
 // All requests authenticate with a Bearer access token obtained via getGoogleAccessToken().
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'

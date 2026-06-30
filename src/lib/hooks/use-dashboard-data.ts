@@ -157,7 +157,7 @@ export function useDashboardData() {
     // Sort by date ascending
     plannedActions.sort((a, b) => a.date.localeCompare(b.date))
 
-    // Split into today and this week — only contact-sourced actions
+    // Split into today and this week, only contact-sourced actions
     const contactActions = plannedActions.filter(a => a.source === 'contact')
     const todayActions = contactActions.filter(a => a.date === today)
     const weekActions = contactActions.filter(a => a.date > today && a.date <= weekEndStr)

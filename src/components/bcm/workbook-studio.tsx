@@ -1,7 +1,7 @@
 'use client'
 
 // Scenario workspace for the Business Case Model, backed by a live Google Sheet.
-// Flow: import a sheet (READ only — a draft preview, nothing copied yet) -> tweak
+// Flow: import a sheet (READ only · a draft preview, nothing copied yet) -> tweak
 // revenue inputs with LIVE local recompute (revenue, mix, funnel AND EBIT) -> "Save
 // as new" mints a private Sheet copy and persists a named scenario -> reload/compare
 // named scenarios instantly from their snapshots. Saved scenarios each own a Sheet
@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   ComposedChart,
+  Area,
   Bar,
   Line,
   XAxis,
@@ -116,7 +117,7 @@ interface ImportErr {
 // The working context: where the model currently lives. `copyId` is null for an
 // unsaved draft (only `sourceId` set) and gets filled once a scenario is saved.
 // `baseline` is the recurring book per year, derived once when a draft/scenario is
-// loaded (group revenue − new revenue at that snapshot); it stays constant so the
+// loaded (group revenue minus new revenue at that snapshot); it stays constant so the
 // revenue chart can compare total revenue (baseline + live new) to the paths.
 // `marges` (category -> purchase fraction) and `costCtx` (frozen baseline + fixed
 // opex per entity) are derived at the SAME moment from the snapshot blocks + the
@@ -176,7 +177,7 @@ function asBlocks(raw: unknown): WorkbookBlocks {
   }
 }
 
-// Recurring book = group revenue − new revenue at the loaded snapshot (constant).
+// Recurring book = group revenue minus new revenue at the loaded snapshot (constant).
 function deriveBaseline(blocks: WorkbookBlocks, inputs: WorkbookInputs): number[] {
   const dash = parseDashboardBlock(blocks.dashboard)
   const groep = dash.entities.find((e) => e.name === 'Groep')
@@ -248,8 +249,8 @@ function patchFunnel(inputs: WorkbookInputs, key: keyof FunnelParams, value: num
   const base = inputs.funnel ?? { ...DEFAULT_FUNNEL }
   return { ...inputs, funnel: { ...base, [key]: value } }
 }
-// Re-allocate one role's entity split (a single % field). bruto/soc/months are fixed —
-// only the pct moves — so a fresh inputs triggers the live cost recompute (zero-sum across
+// Re-allocate one role's entity split (a single % field). bruto/soc/months are fixed,
+// only the pct moves, so a fresh inputs triggers the live cost recompute (zero-sum across
 // entities, group total unchanged). value is a fraction (0..1).
 function patchRosterPct(
   inputs: WorkbookInputs,
@@ -287,6 +288,26 @@ const VIEW_OPTIONS: { value: WorkbookView; label: string }[] = [
 function fmtUpdated(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+}
+
+// Year-over-year growth as a compact signed percent: YoY = (cur / prior) minus 1. Returns
+// null when there is no prior value or the prior is zero (so the cell stays blank). The sign
+// is "+" for growth and the ASCII hyphen-minus "-" for decline (no en/em dash).
+function yoyPct(cur: number | undefined, prior: number | undefined): string | null {
+  if (cur === undefined || prior === undefined || !prior) return null
+  const g = cur / prior - 1
+  const sign = g >= 0 ? '+' : '-'
+  return `${sign}${(Math.abs(g) * 100).toFixed(0)}%`
+}
+
+// A stacked value cell: the figure on top, a small muted YoY growth % beneath it.
+function ValueWithYoY({ text, yoy, strong }: { text: string; yoy: string | null; strong?: boolean }) {
+  return (
+    <div className="flex flex-col items-end leading-tight">
+      <span className={strong ? 'font-medium' : undefined}>{text}</span>
+      {yoy && <span className="text-[10px] tabular-nums text-suite-ink-3">{yoy}</span>}
+    </div>
+  )
 }
 
 // Compact numeric cell editor reused for the yearly logo counts + cross-sell values.
@@ -369,7 +390,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     () => (working ? parsePersonnelRoster(working.blocks.personnelRoster) : null),
     [working],
   )
-  // Overhead (indirecte kosten) per entity per year — read-only, from the workbook.
+  // Overhead (indirecte kosten) per entity per year, read-only, from the workbook.
   const indirecte = useMemo(
     () => (working ? parseIndirecte(working.blocks.indirecte) : null),
     [working],
@@ -487,7 +508,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     }
   }
 
-  // LOAD a saved scenario — instant, no Google call. Rehydrate working + inputs from the
+  // LOAD a saved scenario: instant, no Google call. Rehydrate working + inputs from the
   // snapshot, recomputing baseline + marges + costCtx from its blocks at this same point.
   function handleLoad(row: WorkbookScenarioRow) {
     const blocks = asBlocks(row.blocks)
@@ -532,7 +553,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     }
   }
 
-  // SAVE AS NEW — mint a fresh copy from the source, then persist a named scenario.
+  // SAVE AS NEW: mint a fresh copy from the source, then persist a named scenario.
   async function handleSaveAsNew() {
     if (!working || !inputs || !revenue || savingAs || !userId) return
     const trimmedName = name.trim() || working.title.trim() || 'Scenario'
@@ -540,7 +561,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     // the existing copyId only when no source is known.
     const sourceId = working.sourceId
     if (!sourceId && !working.copyId) {
-      setError('Nothing to copy from — re-import the sheet first.')
+      setError('Nothing to copy from. Re-import the sheet first.')
       return
     }
     setSavingAs(true)
@@ -587,7 +608,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     }
   }
 
-  // SAVE — update the active scenario's copy in place and persist its snapshot.
+  // SAVE: update the active scenario's copy in place and persist its snapshot.
   async function handleSave() {
     if (!working || !inputs || !revenue || saving || !userId || !activeId || !working.copyId) return
     setSaving(true)
@@ -682,7 +703,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
         {/* Saved scenarios are openable even before any import */}
         {(scenarios.length > 0 || !userId) && (
-          <Panel title="Saved scenarios" subtitle="Open one to load it instantly — no Google call.">
+          <Panel title="Saved scenarios" subtitle="Open one to load it instantly · no Google call.">
             {!userId ? (
               <p className="text-xs text-suite-ink-3">Loading account…</p>
             ) : scenarios.length === 0 ? (
@@ -889,7 +910,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-xs font-medium text-suite-accent hover:underline"
         >
-          Sheet updated — open it
+          Sheet updated · open it
           <ExternalLink size={12} className="shrink-0" />
         </a>
       )}
@@ -900,7 +921,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </div>
       )}
 
-      {/* ── Live KPI strip — recomputes as inputs change (EBIT is live, not snapshot) ── */}
+      {/* Live KPI strip · recomputes as inputs change (EBIT is live, not snapshot) */}
       <KpiStrip>
         <Kpi label="Group revenue 2030" value={fmtM(groupRev2030)} sub="recurring book + live new" accent />
         <Kpi label="New revenue 2030" value={fmtM(revenue.totalNew[last])} sub="live from your inputs" />
@@ -923,7 +944,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             </Panel>
 
             {scenario ? (
-              <Panel title="Model vs plan — by year">
+              <Panel title="Model vs plan · by year">
                 <div className="overflow-x-auto">
                   <table className={tbl.table}>
                     <thead>
@@ -939,19 +960,34 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                     <tbody>
                       {PLAN_YEARS.map((y, i) => {
                         const model = modelByPlanYear[i]
+                        const laag = scenario.laag[i] ?? 0
                         const midden = scenario.midden[i] ?? 0
+                        const hoog = scenario.hoog[i] ?? 0
                         const delta = model === undefined ? null : model - midden
+                        // YoY vs the prior plan year. Model has no 2026, so its first YoY is
+                        // 2028 vs 2027; plans have 2026, so their YoY starts at 2027.
+                        const prevModel = i > 0 ? modelByPlanYear[i - 1] : undefined
                         return (
                           <tr key={y} className={tbl.tr}>
                             <td className={tbl.td}>{y}</td>
-                            <td className={cx(tbl.tdR, 'font-medium')}>
-                              {model === undefined ? '—' : fmtM(model)}
+                            <td className={tbl.tdR}>
+                              {model === undefined ? (
+                                '·'
+                              ) : (
+                                <ValueWithYoY text={fmtM(model)} yoy={yoyPct(model, prevModel)} strong />
+                              )}
                             </td>
-                            <td className={tbl.tdR}>{fmtM(scenario.laag[i] ?? 0)}</td>
-                            <td className={tbl.tdR}>{fmtM(midden)}</td>
-                            <td className={tbl.tdR}>{fmtM(scenario.hoog[i] ?? 0)}</td>
+                            <td className={tbl.tdR}>
+                              <ValueWithYoY text={fmtM(laag)} yoy={yoyPct(laag, i > 0 ? scenario.laag[i - 1] : undefined)} />
+                            </td>
+                            <td className={tbl.tdR}>
+                              <ValueWithYoY text={fmtM(midden)} yoy={yoyPct(midden, i > 0 ? scenario.midden[i - 1] : undefined)} />
+                            </td>
+                            <td className={tbl.tdR}>
+                              <ValueWithYoY text={fmtM(hoog)} yoy={yoyPct(hoog, i > 0 ? scenario.hoog[i - 1] : undefined)} />
+                            </td>
                             <td className={cx(tbl.tdR, 'font-medium', delta != null && pos(delta))}>
-                              {delta === null ? '—' : fmtSignedM(delta)}
+                              {delta === null ? '·' : fmtSignedM(delta)}
                             </td>
                           </tr>
                         )
@@ -961,7 +997,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 </div>
               </Panel>
             ) : (
-              <Panel title="Model vs plan — by year">
+              <Panel title="Model vs plan · by year">
                 <p className="text-xs text-suite-ink-3">
                   No Laag / Midden / Hoog plan paths were found in this workbook’s dashboard.
                 </p>
@@ -975,11 +1011,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </section>
       )}
 
-      {/* ── Revenue & mix: two-pane workspace — compact INPUT sidebar (left) feeds the ── */}
+      {/* Revenue & mix: two-pane workspace · compact INPUT sidebar (left) feeds the */}
       {/* ── large VISUALS pane (right); collapse the sidebar for a full-width graph view. ── */}
       {view === 'revenue' && mixCats && byMotion && catRevenue && (
         <section className="flex items-start gap-5">
-          {/* ── LEFT: compact, dense control panel — collapses to a thin re-open strip ── */}
+          {/* LEFT: compact, dense control panel · collapses to a thin re-open strip */}
           {revSidebarCollapsed ? (
             <button
               onClick={() => setRevSidebarCollapsed(false)}
@@ -995,7 +1031,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Inputs</span>
                 <button
                   onClick={() => setRevSidebarCollapsed(true)}
-                  title="Hide inputs — full-width charts"
+                  title="Hide inputs · full-width charts"
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-suite-ink-3 transition-colors hover:bg-suite-subtle hover:text-suite-ink"
                 >
                   Hide
@@ -1019,7 +1055,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                         <span className="ml-auto shrink-0 text-[10px] text-suite-ink-3">{fmtNum(landed)} logos</span>
                       </div>
 
-                      {/* Entry / Max / Cap — three tight value fields (not sliders) */}
+                      {/* Entry / Max / Cap · three tight value fields (not sliders) */}
                       <div className="grid grid-cols-3 gap-1.5">
                         <label className="block">
                           <span className="mb-0.5 block text-[9px] uppercase tracking-wide text-suite-ink-3">Entry</span>
@@ -1047,7 +1083,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                         </label>
                       </div>
 
-                      {/* Growth — single compact slider */}
+                      {/* Growth · single compact slider */}
                       <Slider
                         label="Growth / yr"
                         value={Math.round(s.growth * 100)}
@@ -1058,7 +1094,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                         format={(n) => `${n}%`}
                       />
 
-                      {/* Counts / yr — tight row of four */}
+                      {/* Counts / yr · tight row of four */}
                       <p className="mb-1 mt-0.5 text-[9px] uppercase tracking-wide text-suite-ink-3">Counts / yr</p>
                       <div className="grid grid-cols-4 gap-1">
                         {revenue.years.map((y, yi) => (
@@ -1072,7 +1108,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                         ))}
                       </div>
 
-                      {/* Start months — hidden by default behind a minimal disclosure */}
+                      {/* Start months · hidden by default behind a minimal disclosure */}
                       <button
                         onClick={() => setRevStartOpen((o) => ({ ...o, [s.key]: !startOpen }))}
                         className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-suite-ink-3 transition-colors hover:text-suite-ink"
@@ -1100,7 +1136,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                   )
                 })}
 
-                {/* Product mix — dense per-stream category weights */}
+                {/* Product mix · dense per-stream category weights */}
                 <div className="px-3 py-2.5">
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Product mix</p>
                   <div className="space-y-2.5">
@@ -1144,9 +1180,9 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             </aside>
           )}
 
-          {/* ── RIGHT: the visuals — the focus, large and full-width when collapsed ── */}
+          {/* RIGHT: the visuals · the focus, large and full-width when collapsed */}
           <div className="min-w-0 flex-1 space-y-5">
-            {/* 1 — Where the growth comes from: new logos vs cross-sell */}
+            {/* 1 · Where the growth comes from: new logos vs cross-sell */}
             <Panel title="Where the growth comes from">
               <StackedBarsChart
                 data={yearRows(byMotion.years, {
@@ -1168,14 +1204,14 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 return (
                   <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
                     New revenue {byMotion.years[last]} ={' '}
-                    <span className="font-semibold text-suite-ink">{fmtM(total2030)}</span> — {fmtPct(newPct, 0)} new
+                    <span className="font-semibold text-suite-ink">{fmtM(total2030)}</span> · {fmtPct(newPct, 0)} new
                     logos / {fmtPct(crossPct, 0)} cross-sell.
                   </p>
                 )
               })()}
             </Panel>
 
-            {/* 2 — What we're selling: category revenue over time + 2030 mix doughnut */}
+            {/* 2 · What we're selling: category revenue over time + 2030 mix doughnut */}
             <Panel title="What we're selling">
               <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
                 <StackedAreaChart
@@ -1219,7 +1255,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               </div>
             </Panel>
 
-            {/* 3 — Expansion & cross-sell (Blok 2): tall contribution chart; values fold away */}
+            {/* 3 · Expansion & cross-sell (Blok 2): tall contribution chart; values fold away */}
             {inputs.crossSell.length > 0 && (
               <Panel title="Expansion & cross-sell (Blok 2)">
                 <div className="h-96">
@@ -1265,7 +1301,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                                     style={{ backgroundColor: CAT[idx % CAT.length] }}
                                   />
                                   <div>
-                                    <div className="font-medium text-suite-ink">{line.label || '—'}</div>
+                                    <div className="font-medium text-suite-ink">{line.label || '·'}</div>
                                     <div className="text-[11px] text-suite-ink-3">
                                       {line.category} · {line.entity === 'naerby' ? 'Naerby' : 'Meevynd'}
                                     </div>
@@ -1304,7 +1340,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             <KernIcpPenetrationPanel funnel={funnel} years={revenue.years} />
           </div>
 
-          {/* The existing conversion funnel — sliders feed the back-calculated activity table. */}
+          {/* The existing conversion funnel · sliders feed the back-calculated activity table. */}
           <SectionGrid
             sliders={
               <div>
@@ -1409,7 +1445,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               </div>
               <div className="mt-4 space-y-1 border-t border-suite-border pt-3">
                 <p className="text-xs text-suite-ink-2">
-                  Total leads needed 2027–2030 = {fmtNum(Math.round(funnel.totalLeads))}
+                  Total leads needed 2027-2030 = {fmtNum(Math.round(funnel.totalLeads))}
                 </p>
                 <p className={cx('text-sm font-semibold', pos(funnel.coverage - 1))}>
                   Lead-gen capacity covers {fmtPct(funnel.coverage)} of leads needed
@@ -1461,7 +1497,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 function MarketSizingPanel() {
   return (
     <Panel
-      title="Market sizing — TAM / SAM / SOM"
+      title="Market sizing · TAM / SAM / SOM"
       subtitle="Kern-ICP = 220 accounts at ≈€1M ARR each; SOM = 11 new clients (5% over 3 yr)."
     >
       <div className="overflow-x-auto">
@@ -1493,7 +1529,7 @@ function MarketSizingPanel() {
 }
 
 // THE key new insight, tied to the model (not the other graphs): cumulative new accounts
-// won across 2027–2030 = the running sum of the Contracts stage of computeWorkbookFunnel,
+// won across 2027-2030 = the running sum of the Contracts stage of computeWorkbookFunnel,
 // framed against the kern-ICP (220) and the SOM target (11 new clients).
 function KernIcpPenetrationPanel({ funnel, years }: { funnel: WorkbookFunnel; years: number[] }) {
   const last = years.length - 1
@@ -1551,7 +1587,7 @@ function KernIcpPenetrationPanel({ funnel, years }: { funnel: WorkbookFunnel; ye
 
 // --- People & costs area: visual-first. Where the heads + overhead sit by entity, how
 // they grow, and an editable roster whose entity-allocation re-allocates personnel cost
-// between entities (zero-sum at group level) — flowing straight into the Costs & P&L EBIT.
+// between entities (zero-sum at group level), flowing straight into the Costs & P&L EBIT.
 const PEOPLE_ENTITIES: { key: 'meevynd' | 'naerby' | 'holding'; label: string; color: string }[] = [
   { key: 'meevynd', label: 'Meevynd', color: CAT[0] },
   { key: 'naerby', label: 'Naerby', color: CAT[1] },
@@ -1581,7 +1617,7 @@ function PeopleArea({
 }) {
   const last = years.length - 1
   const entityBars = PEOPLE_ENTITIES.map((e) => ({ key: e.key, name: e.label, color: e.color }))
-  // Cost charts (personnel + overhead) are COSTS — colour their per-entity series with the
+  // Cost charts (personnel + overhead) are COSTS · colour their per-entity series with the
   // red ramp (Meevynd / Naerby / Holding) instead of the categorical entity colours. FTE
   // (headcount, not a cost) keeps the categorical `entityBars`.
   const costEntityBars = PEOPLE_ENTITIES.map((e, i) => ({
@@ -1592,7 +1628,7 @@ function PeopleArea({
 
   return (
     <section className="space-y-6">
-      {/* ── 1) WHERE THE HEADS ARE — FTE by entity over the years + total-FTE KPIs ── */}
+      {/* 1) WHERE THE HEADS ARE · FTE by entity over the years + total-FTE KPIs */}
       <div>
         <h2 className="text-base font-semibold text-suite-ink">Where the heads are</h2>
       </div>
@@ -1629,7 +1665,7 @@ function PeopleArea({
         </Panel>
       </div>
 
-      {/* ── 2) WHERE THE COSTS SIT — personnel by entity + overhead by entity ── */}
+      {/* 2) WHERE THE COSTS SIT · personnel by entity + overhead by entity */}
       <div className="pt-1">
         <h2 className="text-base font-semibold text-suite-ink">Where the costs sit</h2>
       </div>
@@ -1718,7 +1754,7 @@ function PeopleArea({
         </Foldout>
       )}
 
-      {/* ── 3) THE ROSTER — editable entity allocation per role ── */}
+      {/* 3) THE ROSTER · editable entity allocation per role */}
       {roster && roster.length > 0 && (
         <Foldout label="Show roster">
           <RosterTable years={years} roster={roster} onPatchPct={onPatchPct} />
@@ -1729,8 +1765,8 @@ function PeopleArea({
 }
 
 // Editable roster: one row per role with its active months and three % inputs (Meevynd /
-// Naerby / Holding). Editing a % re-allocates that role's cost between entities — zero-sum
-// at group level — and flows into the Costs & P&L EBIT. bruto/soc/months are fixed.
+// Naerby / Holding). Editing a % re-allocates that role's cost between entities (zero-sum
+// at group level) and flows into the Costs & P&L EBIT. bruto/soc/months are fixed.
 function RosterTable({
   years,
   roster,
@@ -1958,8 +1994,8 @@ function SavedScenarioComparison({
                     <span className="truncate">{s.name}</span>
                   </button>
                 </td>
-                <td className={cx(tbl.tdR, 'font-medium')}>{rev == null ? '—' : fmtM(rev)}</td>
-                <td className={cx(tbl.tdR, ebit != null && pos(ebit))}>{ebit == null ? '—' : fmtM(ebit)}</td>
+                <td className={cx(tbl.tdR, 'font-medium')}>{rev == null ? '·' : fmtM(rev)}</td>
+                <td className={cx(tbl.tdR, ebit != null && pos(ebit))}>{ebit == null ? '·' : fmtM(ebit)}</td>
                 <td className={tbl.td}>
                   {s.copy_url && (
                     <a
@@ -1983,17 +2019,17 @@ function SavedScenarioComparison({
 }
 
 // --- Costs & P&L area: answer-first, CEO-legible, one screen. Top-to-bottom:
-//   1) GROUP composition — one stacked bar/year where bar height = revenue, split into
+//   1) GROUP composition: one stacked bar/year where bar height = revenue, split into
 //      COGS / Operating costs / EBIT (profit on top); a KPI row for the group 2030.
-//   2) BY ENTITY — three small multiples telling where profit comes from: Meevynd (engine),
+//   2) BY ENTITY: three small multiples telling where profit comes from: Meevynd (engine),
 //      Naerby (invests then turns), Holding (shared cost center). EBIT mini-bars, 2030 figures.
-//   3) DETAIL — the full per-entity P&L table (Segmented selector) behind a foldout.
+//   3) DETAIL: the full per-entity P&L table (Segmented selector) behind a foldout.
 // All values come from the LIVE `costs`, so the whole area recomputes with the inputs. ---
 
 const COST_COLORS = {
-  cogs: SEMANTIC.cost[0], // deep red — cost of goods
-  opex: SEMANTIC.cost[1], // lighter red — operating costs
-  ebit: SEMANTIC.profit, // green — profit on top
+  cogs: SEMANTIC.cost[0], // deep red · cost of goods
+  opex: SEMANTIC.cost[1], // lighter red · operating costs
+  ebit: SEMANTIC.profit, // green · profit on top
 } as const
 
 // The three consolidated operating entities and the one-line story for each.
@@ -2002,12 +2038,12 @@ const ENTITY_STORY: {
   label: string
   caption: string
 }[] = [
-  { key: 'meevynd', label: 'Meevynd · Tech BV', caption: 'The profit engine — positive, growing EBIT.' },
-  { key: 'naerby', label: 'Naerby · Innovatie BV', caption: 'Invests first, then turns — EBIT crosses to positive.' },
-  { key: 'holding', label: 'Holding · Business Support', caption: 'Shared cost center — no revenue, negative EBIT.' },
+  { key: 'meevynd', label: 'Meevynd · Tech BV', caption: 'The profit engine · positive, growing EBIT.' },
+  { key: 'naerby', label: 'Naerby · Innovatie BV', caption: 'Invests first, then turns · EBIT crosses to positive.' },
+  { key: 'holding', label: 'Holding · Business Support', caption: 'Shared cost center · no revenue, negative EBIT.' },
 ]
 
-// Full P&L rows. Operating costs has no own field on EntityCosts (it is brutomarge − ebit),
+// Full P&L rows. Operating costs has no own field on EntityCosts (it is brutomarge minus ebit),
 // so it is derived per-entity in the table; the rest map straight to a numeric array key.
 type PnlRow =
   | { kind: 'field'; key: keyof Pick<EntityCosts, 'omzet' | 'cogs' | 'brutomarge' | 'ebit'>; label: string; strong?: boolean; signed?: boolean }
@@ -2039,7 +2075,7 @@ function CostsArea({
 
   // Composition rows: bar height = revenue, split COGS + Operating costs + EBIT(≥0 in the
   // stack); the true EBIT (which can be negative) is overlaid as a line so a loss year
-  // still reads correctly. opex = brutomarge − ebit (the operating cost below gross margin).
+  // still reads correctly. opex = brutomarge minus ebit (the operating cost below gross margin).
   const compRows = years.map((y, i) => {
     const ebit = g.ebit[i] ?? 0
     const opex = (g.brutomarge[i] ?? 0) - ebit
@@ -2052,9 +2088,24 @@ function CostsArea({
     }
   })
 
+  // Revenue vs cost: revenue line (omzet) vs total cost line (COGS + operating costs,
+  // i.e. cogs + (brutomarge minus ebit)), with EBIT drawn as the green gap between them
+  // so widening operating leverage reads as growing profit.
+  const revCostRows = years.map((y, i) => {
+    const ebit = g.ebit[i] ?? 0
+    const opex = (g.brutomarge[i] ?? 0) - ebit
+    const totalCost = (g.cogs[i] ?? 0) + opex
+    return {
+      year: String(y),
+      revenue: g.omzet[i] ?? 0,
+      totalCost,
+      ebit,
+    }
+  })
+
   return (
     <section className="space-y-6">
-      {/* ── 1) GROUP — where the revenue goes (the key view) ── */}
+      {/* 1) GROUP · where the revenue goes (the key view) */}
       <div>
         <h2 className="text-base font-semibold text-suite-ink">Where the group’s revenue goes</h2>
       </div>
@@ -2070,11 +2121,21 @@ function CostsArea({
         <Kpi label="Gross margin" value={fmtPct(groupGrossMargin2030)} sub="brutomarge / revenue" />
       </KpiStrip>
 
-      <Panel title="Group revenue → COGS · operating costs · EBIT">
-        <CompositionChart data={compRows} />
-      </Panel>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Revenue vs cost">
+          <RevenueVsCostChart data={revCostRows} />
+          <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
+            The green gap between revenue and total cost is EBIT ·{' '}
+            <span className="font-semibold text-suite-ink">{fmtM(groupEbit2030)}</span> in {years[last]}.
+          </p>
+        </Panel>
 
-      {/* ── 2) BY ENTITY — where the profit comes from (small multiples) ── */}
+        <Panel title="Group revenue → COGS · operating costs · EBIT">
+          <CompositionChart data={compRows} />
+        </Panel>
+      </div>
+
+      {/* 2) BY ENTITY · where the profit comes from (small multiples) */}
       <div className="pt-1">
         <h2 className="text-base font-semibold text-suite-ink">Where the profit comes from</h2>
       </div>
@@ -2085,7 +2146,7 @@ function CostsArea({
         ))}
       </div>
 
-      {/* ── 3) DETAIL — full per-entity P&L behind a foldout (reference, not the lead) ── */}
+      {/* 3) DETAIL · full per-entity P&L behind a foldout (reference, not the lead) */}
       <Foldout label="Show full P&L">
         <PnlTable costs={costs} years={years} />
       </Foldout>
@@ -2110,7 +2171,7 @@ function EntityCard({
   const rev2030 = entity.omzet[last] ?? 0
   const ebit2030 = entity.ebit[last] ?? 0
   const ebitMargin2030 = entity.ebitMarginPct[last] ?? 0
-  // First year EBIT goes from negative to non-negative — the "turn" Naerby's story calls out.
+  // First year EBIT goes from negative to non-negative, the "turn" Naerby's story calls out.
   const turnYear = years.find((_, i) => (entity.ebit[i] ?? 0) >= 0 && i > 0 && (entity.ebit[i - 1] ?? 0) < 0)
 
   return (
@@ -2243,6 +2304,63 @@ const costTooltipStyle = {
 } as const
 // Tooltip styling for the product-mix doughnut (matches the cost charts).
 const mixTooltipStyle = costTooltipStyle
+
+// Revenue vs cost: a green revenue line over a red total-cost line, with EBIT rendered as a
+// soft green area so the widening gap between the two lines reads as growing profit. Makes
+// operating leverage obvious. revenue = omzet, totalCost = COGS + operating costs, ebit = gap.
+function RevenueVsCostChart({
+  data,
+}: {
+  data: { year: string; revenue: number; totalCost: number; ebit: number }[]
+}) {
+  return (
+    <div style={{ width: '100%', height: 320 }}>
+      <ResponsiveContainer>
+        <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
+          <CartesianGrid stroke={C.grid} vertical={false} />
+          <XAxis dataKey="year" tick={costAxisTick} tickLine={false} axisLine={{ stroke: C.grid }} />
+          <YAxis
+            tick={costAxisTick}
+            tickLine={false}
+            axisLine={false}
+            width={52}
+            tickFormatter={(v: number) => fmtM(v, v >= 1e7 || v <= -1e7 ? 0 : 1)}
+          />
+          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+          {/* EBIT as a soft green area so the revenue-over-cost gap reads as profit. */}
+          <Area
+            type="monotone"
+            dataKey="ebit"
+            name="EBIT (profit)"
+            stroke="none"
+            fill={SEMANTIC.profit}
+            fillOpacity={0.18}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="revenue"
+            name="Revenue"
+            stroke={SEMANTIC.profit}
+            strokeWidth={2.5}
+            dot={{ r: 2 }}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="totalCost"
+            name="Total cost"
+            stroke={SEMANTIC.cost[0]}
+            strokeWidth={2.5}
+            dot={{ r: 2 }}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
 
 // GROUP composition: stacked bars (COGS / operating costs / EBIT) summing to revenue, with
 // the true EBIT overlaid as a line so a negative-EBIT year still reads through the stack.

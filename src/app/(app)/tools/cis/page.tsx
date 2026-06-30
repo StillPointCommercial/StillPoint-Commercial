@@ -36,7 +36,7 @@ export default function DashboardPage() {
       {/* Year plan pace (shows only when plan is configured) */}
       <PaceWidget />
 
-      {/* Stalled deals — urgent attention */}
+      {/* Stalled deals: urgent attention */}
       <StalledDeals deals={data.stalledDeals} />
 
       {/* Forward-looking: deal next steps */}

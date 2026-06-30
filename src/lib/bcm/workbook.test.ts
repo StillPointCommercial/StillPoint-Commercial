@@ -273,10 +273,10 @@ describe('workbook live cost / EBIT model (faithful to Marges + Dashboard)', () 
     const cost = roleCost(sampleRoster[0])
     SHEET_YEARS.forEach((_, y) => {
       // The role's cost leaves Meevynd (its EBIT rises) and lands on Naerby (its EBIT falls)
-      // by exactly that role's cost — a clean transfer of the same amount.
+      // by exactly that role's cost, a clean transfer of the same amount.
       expect(after.meevynd.ebit[y]).toBeCloseTo(before.meevynd.ebit[y] + cost[y], 4)
       expect(after.naerby.ebit[y]).toBeCloseTo(before.naerby.ebit[y] - cost[y], 4)
-      // The two moves cancel, so GROUP EBIT is preserved — the re-allocation is zero-sum.
+      // The two moves cancel, so GROUP EBIT is preserved, the re-allocation is zero-sum.
       expect(after.groep.ebit[y]).toBeCloseTo(before.groep.ebit[y], 4)
     })
   })

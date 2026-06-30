@@ -260,7 +260,7 @@ export const LOSS_REASON_OPTIONS = [
   'Lost to competitor',
   'No budget / not a priority',
   'Decision maker changed',
-  'Timing — delayed indefinitely',
+  'Timing, delayed indefinitely',
   'Poor qualification (should not have pursued)',
   'Relationship not strong enough',
   'Other',

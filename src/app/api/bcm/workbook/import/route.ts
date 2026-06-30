@@ -1,5 +1,5 @@
 // Import a Google Sheet workbook (e.g. Adapta "Prognose 2027-2030") for the round-trip.
-// READS only — it does not copy. A copy is created per saved scenario (via the export
+// READS only, it does not copy. A copy is created per saved scenario (via the export
 // route), so importing to preview never clutters Drive.
 //   { url }    -> read the shared SOURCE, returns sourceId
 //   { copyId } -> re-read an existing scenario copy (refresh), returns copyId

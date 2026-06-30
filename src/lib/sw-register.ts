@@ -11,7 +11,7 @@ export function registerServiceWorker() {
 
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
-            // New version available — could show a toast here
+            // New version available, could show a toast here
             console.log('StillPoint CIS: New version available')
           }
         })

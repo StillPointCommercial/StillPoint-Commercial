@@ -377,10 +377,10 @@ export function OpportunityForm({ open, onClose, opportunity, defaultContactId }
         <CollapsibleSection title="Khalsa Qualification" defaultOpen={form.khalsa_pain_identified || form.khalsa_decision_process_clear || form.khalsa_resources_confirmed || form.khalsa_champion_identified}>
           <div className="space-y-2">
             {([
-              ['khalsa_pain_identified', 'Pain identified — Is there a real, diagnosed pain?'],
-              ['khalsa_decision_process_clear', 'Decision process clear — Who decides and how?'],
-              ['khalsa_resources_confirmed', 'Resources confirmed — Budget, time, people?'],
-              ['khalsa_champion_identified', 'Champion identified — Internal advocate?'],
+              ['khalsa_pain_identified', 'Pain identified: Is there a real, diagnosed pain?'],
+              ['khalsa_decision_process_clear', 'Decision process clear: Who decides and how?'],
+              ['khalsa_resources_confirmed', 'Resources confirmed: Budget, time, people?'],
+              ['khalsa_champion_identified', 'Champion identified: Internal advocate?'],
             ] as const).map(([key, label]) => (
               <label key={key} className="flex items-center gap-3 cursor-pointer">
                 <input

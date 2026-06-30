@@ -79,7 +79,7 @@ export function CascadingView({ plan, calc, onSave }: Props) {
           ))}
         </div>
         {totalWeight !== 100 && (
-          <p className="text-xs text-attention-red mt-2">Total is {totalWeight}% — should be 100%</p>
+          <p className="text-xs text-attention-red mt-2">Total is {totalWeight}%, should be 100%</p>
         )}
         <div className="flex justify-end mt-3">
           <Button size="sm" onClick={handleSave} disabled={saving || totalWeight !== 100}>

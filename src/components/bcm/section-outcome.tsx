@@ -148,7 +148,7 @@ export function SectionOutcome({
           />
         </Panel>
 
-        <Panel title="Whitespace — accounts still open">
+        <Panel title="Whitespace: accounts still open">
           <table className={tbl.table}>
             <thead>
               <tr>

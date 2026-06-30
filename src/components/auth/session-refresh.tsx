@@ -26,7 +26,7 @@ export function SessionRefresh() {
         router.push('/login')
       }
       if (event === 'TOKEN_REFRESHED') {
-        // Session was refreshed — router.refresh() ensures server components
+        // Session was refreshed, router.refresh() ensures server components
         // re-render with the new cookies
         router.refresh()
       }

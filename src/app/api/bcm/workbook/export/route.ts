@@ -30,7 +30,7 @@ export async function POST(req: Request): Promise<Response> {
     let copyUrl = copyId ? `https://docs.google.com/spreadsheets/d/${copyId}/edit` : ''
     if (!copyId) {
       if (!body.sourceId) return Response.json({ error: 'no_target' }, { status: 400 })
-      const copy = await copyFile(token, body.sourceId, body.name ?? 'StillPoint — Business Case')
+      const copy = await copyFile(token, body.sourceId, body.name ?? 'StillPoint: Business Case')
       copyId = copy.id
       copyUrl = copy.url
     }

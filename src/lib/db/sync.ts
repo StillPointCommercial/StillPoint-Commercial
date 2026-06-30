@@ -30,7 +30,7 @@ export async function pullFromSupabase() {
           continue
         }
 
-        // Compare updated_at timestamps — only overwrite if remote is newer
+        // Compare updated_at timestamps, only overwrite if remote is newer
         const localRecord = await (db[table] as any).get(remoteRecord.id)
         if (localRecord) {
           const localUpdatedAt = localRecord.updated_at || localRecord.created_at

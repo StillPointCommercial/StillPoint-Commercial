@@ -156,7 +156,7 @@ export function BackwardCalculator({ plan, calc, onSave }: Props) {
       <div className="grid md:grid-cols-3 gap-4">
         <ConversionEditor
           label="Cold / Outreach"
-          hint="Lowest conversion — cold leads, RFPs"
+          hint="Lowest conversion: cold leads, RFPs"
           conversions={cold}
           onChange={setCold}
         />

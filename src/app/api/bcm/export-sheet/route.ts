@@ -34,18 +34,18 @@ export async function POST(req: Request): Promise<Response> {
       ['Year-1 entry %', params.instap],
       ['Growth/yr (pts)', params.groei],
       ['Plateau %', params.plafond],
-      ['Mix — Licenties %', params.mix_lic],
-      ['Mix — Beheer & support %', params.mix_beheer],
-      ['Mix — Omsorg / IAM %', params.mix_omsorg],
-      ['Mix — Bereikbaarheid %', params.mix_bereik],
-      ['Mix — Hardware %', params.mix_hardware],
-      ['Mix — Puls %', params.mix_puls],
-      ['Mix — Grund %', params.mix_grund],
-      ['Conversion — lead → suspect %', params.c_sl],
-      ['Conversion — suspect → meeting %', params.c_ld],
-      ['Conversion — discovery → demo %', params.c_dd],
-      ['Conversion — demo → proposal %', params.c_dv],
-      ['Conversion — proposal → contract %', params.c_vc],
+      ['Mix: Licenties %', params.mix_lic],
+      ['Mix: Beheer & support %', params.mix_beheer],
+      ['Mix: Omsorg / IAM %', params.mix_omsorg],
+      ['Mix: Bereikbaarheid %', params.mix_bereik],
+      ['Mix: Hardware %', params.mix_hardware],
+      ['Mix: Puls %', params.mix_puls],
+      ['Mix: Grund %', params.mix_grund],
+      ['Conversion: lead → suspect %', params.c_sl],
+      ['Conversion: suspect → meeting %', params.c_ld],
+      ['Conversion: discovery → demo %', params.c_dd],
+      ['Conversion: demo → proposal %', params.c_dv],
+      ['Conversion: proposal → contract %', params.c_vc],
       ['Core market', params.samKern],
       ['Existing clients', params.bestaande],
       ['Base revenue', params.baseline],
@@ -90,7 +90,7 @@ export async function POST(req: Request): Promise<Response> {
       { title: 'Scenario comparison', rows: scenarioComparison },
     ]
 
-    const { url } = await createSpreadsheet(token, `${name} — Business Case`, tabs)
+    const { url } = await createSpreadsheet(token, `${name}: Business Case`, tabs)
     return Response.json({ url })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Export failed.'

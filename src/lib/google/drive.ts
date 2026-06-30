@@ -1,4 +1,4 @@
-// Google Drive v3 helpers (SERVER-ONLY — never import from a 'use client' file).
+// Google Drive v3 helpers (SERVER-ONLY, never import from a 'use client' file).
 // Used to make a NATIVE copy of a shared Google Sheet so the original is never
 // touched and the copy keeps every formula, format and chart intact.
 // Authenticate with a Bearer access token from getGoogleAccessToken().

@@ -1,4 +1,4 @@
-// Business Case Model — the four starter scenarios.
+// Business Case Model: the four starter scenarios.
 import type { Preset } from './types'
 
 const growthBase = {

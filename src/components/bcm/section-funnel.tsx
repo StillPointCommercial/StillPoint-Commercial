@@ -72,7 +72,7 @@ export function SectionFunnel({
             </table>
           </div>
           <p className="mt-4 border-t border-suite-border pt-3 text-sm font-semibold text-suite-ink">
-            Total leads needed 2026–2030 = {fmtNum(Math.round(c.totalLeads))}
+            Total leads needed 2026-2030 = {fmtNum(Math.round(c.totalLeads))}
             <span className="font-normal text-suite-ink-2">
               {' · '}{fmtPct(c.leadsPctCore)} of the core market
             </span>
