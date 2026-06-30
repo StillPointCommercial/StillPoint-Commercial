@@ -37,15 +37,7 @@ export default async function LauncherPage() {
       <SuiteHeader user={{ name, role: profile.role, initials: initialsOf(name) }} />
 
       <main className="mx-auto w-full max-w-[2400px] px-6 lg:px-10 py-12">
-        <p className="text-xs font-medium uppercase tracking-[0.12em] text-suite-ink-3">Stillpoint Suite</p>
-        <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-suite-ink">Your tools</h1>
-        <p className="mt-1.5 text-suite-ink-2">
-          {isOwner
-            ? 'You have owner access to every enabled tool in the suite.'
-            : 'The tools your StillPoint partner has enabled for you.'}
-        </p>
-
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {tools.map((t) => (
             <Tile
               key={t.slug}
