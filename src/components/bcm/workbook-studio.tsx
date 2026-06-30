@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   ComposedChart,
-  Area,
+  Bar,
   Line,
   XAxis,
   YAxis,
@@ -1396,7 +1396,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </SectionGrid>
       )}
 
-      {/* ── Costs & P&L: entity selector; live EBIT KPIs + chart; full P&L folds away ── */}
+      {/* ── Costs & P&L: group composition + KPIs, entity small-multiples, full P&L folds away ── */}
       {view === 'pnl' &&
         (costs ? (
           <CostsArea costs={costs} years={revenue.years} />
@@ -1656,16 +1656,213 @@ function SavedScenarioComparison({
   )
 }
 
-// --- Costs & P&L area: entity selector, live EBIT/margin KPIs + cost-build chart from
-// the LIVE `costs`, and the full P&L table behind a foldout. ---
-const PNL_ROWS: { key: keyof Pick<EntityCosts, 'omzet' | 'cogs' | 'brutomarge' | 'ebit'>; label: string; strong?: boolean }[] = [
-  { key: 'omzet', label: 'Omzet' },
-  { key: 'cogs', label: 'COGS' },
-  { key: 'brutomarge', label: 'Brutomarge' },
-  { key: 'ebit', label: 'EBIT', strong: true },
+// --- Costs & P&L area: answer-first, CEO-legible, one screen. Top-to-bottom:
+//   1) GROUP composition — one stacked bar/year where bar height = revenue, split into
+//      COGS / Operating costs / EBIT (profit on top); a KPI row for the group 2030.
+//   2) BY ENTITY — three small multiples telling where profit comes from: Meevynd (engine),
+//      Naerby (invests then turns), Holding (shared cost center). EBIT mini-bars, 2030 figures.
+//   3) DETAIL — the full per-entity P&L table (Segmented selector) behind a foldout.
+// All values come from the LIVE `costs`, so the whole area recomputes with the inputs. ---
+
+const COST_COLORS = {
+  cogs: CAT[6], // muted slate — cost of goods
+  opex: CAT[2], // amber — operating costs
+  ebit: C.accent, // teal — profit on top
+} as const
+
+const LIVE_NOTE =
+  'Live — recomputed from your inputs via the sheet’s margins; export writes it back for Google’s exact recompute.'
+
+// The three consolidated operating entities and the one-line story for each.
+const ENTITY_STORY: {
+  key: 'meevynd' | 'naerby' | 'holding'
+  label: string
+  caption: string
+}[] = [
+  { key: 'meevynd', label: 'Meevynd · Tech BV', caption: 'The profit engine — positive, growing EBIT.' },
+  { key: 'naerby', label: 'Naerby · Innovatie BV', caption: 'Invests first, then turns — EBIT crosses to positive.' },
+  { key: 'holding', label: 'Holding · Business Support', caption: 'Shared cost center — no revenue, negative EBIT.' },
+]
+
+// Full P&L rows. Operating costs has no own field on EntityCosts (it is brutomarge − ebit),
+// so it is derived per-entity in the table; the rest map straight to a numeric array key.
+type PnlRow =
+  | { kind: 'field'; key: keyof Pick<EntityCosts, 'omzet' | 'cogs' | 'brutomarge' | 'ebit'>; label: string; strong?: boolean; signed?: boolean }
+  | { kind: 'opex'; label: string }
+  | { kind: 'pct'; key: keyof Pick<EntityCosts, 'ebitMarginPct'>; label: string }
+const PNL_ROWS: PnlRow[] = [
+  { kind: 'field', key: 'omzet', label: 'Omzet' },
+  { kind: 'field', key: 'cogs', label: 'COGS' },
+  { kind: 'field', key: 'brutomarge', label: 'Brutomarge' },
+  { kind: 'opex', label: 'Operating costs' },
+  { kind: 'field', key: 'ebit', label: 'EBIT', strong: true, signed: true },
+  { kind: 'pct', key: 'ebitMarginPct', label: 'EBIT %' },
 ]
 
 function CostsArea({
+  costs,
+  years,
+}: {
+  costs: { meevynd: EntityCosts; naerby: EntityCosts; holding: EntityCosts; groep: EntityCosts }
+  years: number[]
+}) {
+  const last = years.length - 1
+  const g = costs.groep
+
+  const groupRev2030 = g.omzet[last] ?? 0
+  const groupEbit2030 = g.ebit[last] ?? 0
+  const groupEbitMargin2030 = g.ebitMarginPct[last] ?? 0
+  const groupGrossMargin2030 = g.grossMarginPct[last] ?? 0
+
+  // Composition rows: bar height = revenue, split COGS + Operating costs + EBIT(≥0 in the
+  // stack); the true EBIT (which can be negative) is overlaid as a line so a loss year
+  // still reads correctly. opex = brutomarge − ebit (the operating cost below gross margin).
+  const compRows = years.map((y, i) => {
+    const ebit = g.ebit[i] ?? 0
+    const opex = (g.brutomarge[i] ?? 0) - ebit
+    return {
+      year: String(y),
+      cogs: g.cogs[i] ?? 0,
+      opex: Math.max(0, opex),
+      ebit: Math.max(0, ebit),
+      ebitLine: ebit,
+    }
+  })
+  const groupHasLoss = years.some((_, i) => (g.ebit[i] ?? 0) < 0)
+
+  return (
+    <section className="space-y-6">
+      {/* ── 1) GROUP — where the revenue goes (the key view) ── */}
+      <div>
+        <h2 className="text-base font-semibold text-suite-ink">Where the group’s revenue goes</h2>
+        <p className="mt-0.5 text-xs text-suite-ink-3">
+          Each bar is that year’s group revenue, split into COGS, operating costs and the EBIT that drops out on top.
+          {' '}
+          {LIVE_NOTE}
+        </p>
+      </div>
+
+      <KpiStrip>
+        <Kpi label={`Group revenue ${years[last]}`} value={fmtM(groupRev2030)} accent />
+        <Kpi
+          label={`Group EBIT ${years[last]}`}
+          value={fmtM(groupEbit2030)}
+          sub={groupEbit2030 < 0 ? 'loss' : 'profit'}
+        />
+        <Kpi label="EBIT margin" value={fmtPct(groupEbitMargin2030)} sub="EBIT / revenue" />
+        <Kpi label="Gross margin" value={fmtPct(groupGrossMargin2030)} sub="brutomarge / revenue" />
+      </KpiStrip>
+
+      <Panel
+        title="Group revenue → COGS · operating costs · EBIT"
+        subtitle="Bar height = revenue; the teal cap is profit. EBIT is also drawn as a line so a loss year reads through."
+      >
+        <CompositionChart data={compRows} />
+        {groupHasLoss && (
+          <p className="mt-4 border-t border-suite-border pt-3 text-xs text-suite-ink-2">
+            A year with no teal cap is an EBIT loss — costs exceed revenue; follow the EBIT line below the axis.
+          </p>
+        )}
+      </Panel>
+
+      {/* ── 2) BY ENTITY — where the profit comes from (small multiples) ── */}
+      <div className="pt-1">
+        <h2 className="text-base font-semibold text-suite-ink">Where the profit comes from</h2>
+        <p className="mt-0.5 text-xs text-suite-ink-3">
+          EBIT by year for each BV. Negative years are shown in red. Together they roll up to the group above.
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {ENTITY_STORY.map((s) => (
+          <EntityCard key={s.key} label={s.label} caption={s.caption} entity={costs[s.key]} years={years} />
+        ))}
+      </div>
+
+      {/* ── 3) DETAIL — full per-entity P&L behind a foldout (reference, not the lead) ── */}
+      <Foldout label="Show full P&L">
+        <PnlTable costs={costs} years={years} />
+      </Foldout>
+    </section>
+  )
+}
+
+// A compact small-multiple for one entity: name + one-line story, an EBIT-by-year mini bar
+// (negative years coloured with pos()), and the 2030 revenue / EBIT / EBIT-margin figures.
+function EntityCard({
+  label,
+  caption,
+  entity,
+  years,
+}: {
+  label: string
+  caption: string
+  entity: EntityCosts
+  years: number[]
+}) {
+  const last = years.length - 1
+  const rev2030 = entity.omzet[last] ?? 0
+  const ebit2030 = entity.ebit[last] ?? 0
+  const ebitMargin2030 = entity.ebitMarginPct[last] ?? 0
+  // First year EBIT goes from negative to non-negative — the "turn" Naerby's story calls out.
+  const turnYear = years.find((_, i) => (entity.ebit[i] ?? 0) >= 0 && i > 0 && (entity.ebit[i - 1] ?? 0) < 0)
+
+  return (
+    <div className="flex flex-col rounded-xl border border-suite-border bg-suite-bg p-4">
+      <div className="text-sm font-semibold text-suite-ink">{label}</div>
+      <p className="mt-0.5 text-[11px] leading-snug text-suite-ink-3">{caption}</p>
+
+      <div className="mt-3">
+        <EntityEbitMini ebit={years.map((_, i) => entity.ebit[i] ?? 0)} years={years} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-suite-border pt-3">
+        <EntityFig label={`Rev ${years[last]}`} value={fmtM(rev2030)} />
+        <EntityFig label={`EBIT ${years[last]}`} value={fmtM(ebit2030)} tone={pos(ebit2030)} />
+        <EntityFig label="EBIT %" value={fmtPct(ebitMargin2030)} tone={pos(ebit2030)} />
+      </div>
+
+      {turnYear !== undefined && (
+        <p className="mt-2 text-[11px] font-medium text-suite-accent">Turns positive in {turnYear}.</p>
+      )}
+    </div>
+  )
+}
+
+function EntityFig({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-suite-ink-3">{label}</div>
+      <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', tone ?? 'text-suite-ink')}>{value}</div>
+    </div>
+  )
+}
+
+// EBIT-by-year mini bar chart. Positive bars teal, negative bars terracotta (via pos()'s
+// palette), with a zero baseline so the sign reads at a glance.
+function EntityEbitMini({ ebit, years }: { ebit: number[]; years: number[] }) {
+  const data = years.map((y, i) => ({ year: String(y), ebit: ebit[i] ?? 0 }))
+  return (
+    <div style={{ width: '100%', height: 96 }}>
+      <ResponsiveContainer>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+          <CartesianGrid stroke={C.grid} vertical={false} />
+          <XAxis dataKey="year" tick={{ fill: C.ink3, fontSize: 10 }} tickLine={false} axisLine={{ stroke: C.grid }} />
+          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
+          <Bar dataKey="ebit" name="EBIT" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={d.ebit >= 0 ? C.pos : C.neg} />
+            ))}
+          </Bar>
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// Full per-entity P&L table with a Segmented selector. Rows: Omzet / COGS / Brutomarge /
+// Operating costs / EBIT / EBIT% × years. Reference detail behind the foldout.
+function PnlTable({
   costs,
   years,
 }: {
@@ -1681,85 +1878,62 @@ function CostsArea({
   type EntityKey = (typeof options)[number]['value']
   const [sel, setSel] = useState<EntityKey>('groep')
   const entity = costs[sel]
-  const last = years.length - 1
 
-  const rev2030 = entity.omzet[last] ?? 0
-  const ebit2030 = entity.ebit[last] ?? 0
-  const ebitMargin2030 = entity.ebitMarginPct[last] ?? 0
-  const grossMargin2030 = entity.grossMarginPct[last] ?? 0
-
-  const costRows = years.map((y, i) => ({
-    year: String(y),
-    cogs: entity.cogs[i] ?? 0,
-    margin: Math.max(0, entity.brutomarge[i] ?? 0),
-    ebit: entity.ebit[i] ?? 0,
-  }))
+  const cellValue = (row: PnlRow, i: number): { text: string; tone?: string } => {
+    if (row.kind === 'opex') {
+      const v = (entity.brutomarge[i] ?? 0) - (entity.ebit[i] ?? 0)
+      return { text: fmtM(v) }
+    }
+    if (row.kind === 'pct') return { text: fmtPct(entity[row.key][i] ?? 0) }
+    const v = entity[row.key][i] ?? 0
+    return { text: fmtM(v), tone: row.signed ? pos(v) : undefined }
+  }
 
   return (
-    <section className="space-y-4">
-      <div className="space-y-1.5">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Segmented<EntityKey> options={options.map((o) => ({ value: o.value, label: o.label }))} value={sel} onChange={setSel} />
         <p className="text-xs text-suite-ink-3">
           {ENTITY_BLURB[entity.name] ??
             'Meevynd = Tech BV · Naerby = Innovatie BV · Holding = Business Support · Groep = consolidated.'}
-          {' '}Live — recomputed from your inputs via the sheet’s margins; export writes it back for Google’s exact
-          recompute.
         </p>
       </div>
-
-      <KpiStrip>
-        <Kpi label={`${entity.name} revenue ${years[last]}`} value={fmtM(rev2030)} accent />
-        <Kpi label={`EBIT ${years[last]}`} value={fmtM(ebit2030)} sub={pos(ebit2030) === 'text-suite-neg' ? 'loss' : 'profit'} />
-        <Kpi label="EBIT margin" value={fmtPct(ebitMargin2030)} sub="EBIT / omzet" />
-        <Kpi label="Gross margin" value={fmtPct(grossMargin2030)} sub="brutomarge / omzet" />
-      </KpiStrip>
-
-      <Panel
-        title={`${entity.name} — cost build vs EBIT`}
-        subtitle="Live: COGS + gross margin stacked, EBIT overlaid — recomputed from your inputs."
-      >
-        <CostBuildChart data={costRows} />
-      </Panel>
-
-      <Foldout label="Show full P&L table">
-        <div className="overflow-x-auto">
-          <table className={tbl.table}>
-            <thead>
-              <tr>
-                <th className={tbl.th}>Line</th>
-                {years.map((y) => (
-                  <th key={y} className={tbl.thR}>
-                    {y}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PNL_ROWS.map((r) => {
-                const vals = entity[r.key]
-                return (
-                  <tr key={r.key} className={r.strong ? tbl.trHighlight : tbl.tr}>
-                    <td className={cx(tbl.td, r.strong && 'font-semibold')}>{r.label}</td>
-                    {years.map((y, i) => {
-                      const v = vals[i] ?? 0
-                      const signed = r.key === 'ebit'
-                      return (
-                        <td key={y} className={cx(tbl.tdR, r.strong && 'font-semibold', signed && pos(v))}>
-                          {fmtM(v)}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-3 border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
-          Live preview — on export, Google recomputes the full P&L (incl. EBITDA, taxes, net) from your input cells.
-        </p>
-      </Foldout>
-    </section>
+      <div className="overflow-x-auto">
+        <table className={tbl.table}>
+          <thead>
+            <tr>
+              <th className={tbl.th}>Line</th>
+              {years.map((y) => (
+                <th key={y} className={tbl.thR}>
+                  {y}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PNL_ROWS.map((row) => {
+              const strong = row.kind === 'field' && row.strong
+              return (
+                <tr key={row.label} className={strong ? tbl.trHighlight : tbl.tr}>
+                  <td className={cx(tbl.td, strong && 'font-semibold')}>{row.label}</td>
+                  {years.map((y, i) => {
+                    const { text, tone } = cellValue(row, i)
+                    return (
+                      <td key={y} className={cx(tbl.tdR, strong && 'font-semibold', tone)}>
+                        {text}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
+        Live preview — on export, Google recomputes the full P&L (incl. EBITDA, taxes, net) from your input cells.
+      </p>
+    </div>
   )
 }
 
@@ -1768,18 +1942,18 @@ const costTooltipStyle = {
   contentStyle: { borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 },
   labelStyle: { color: C.slate, fontWeight: 600 },
 } as const
-// Tooltip styling for the product-mix doughnut (matches the cost-build chart).
+// Tooltip styling for the product-mix doughnut (matches the cost charts).
 const mixTooltipStyle = costTooltipStyle
 
-// Stacked cost/margin areas (COGS / gross margin) with EBIT overlaid as a line.
-// Built on the same recharts ComposedChart pattern as section-outcome.tsx.
-function CostBuildChart({
+// GROUP composition: stacked bars (COGS / operating costs / EBIT) summing to revenue, with
+// the true EBIT overlaid as a line so a negative-EBIT year still reads through the stack.
+function CompositionChart({
   data,
 }: {
-  data: { year: string; cogs: number; margin: number; ebit: number }[]
+  data: { year: string; cogs: number; opex: number; ebit: number; ebitLine: number }[]
 }) {
   return (
-    <div style={{ width: '100%', height: 280 }}>
+    <div style={{ width: '100%', height: 320 }}>
       <ResponsiveContainer>
         <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
           <CartesianGrid stroke={C.grid} vertical={false} />
@@ -1791,37 +1965,31 @@ function CostBuildChart({
             width={52}
             tickFormatter={(v: number) => fmtM(v, v >= 1e7 || v <= -1e7 ? 0 : 1)}
           />
-          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} />
+          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
           <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
-          <Area
-            type="monotone"
-            dataKey="cogs"
-            name="COGS"
+          <Bar dataKey="cogs" name="COGS" stackId="rev" fill={COST_COLORS.cogs} isAnimationActive={false} />
+          <Bar
+            dataKey="opex"
+            name="Operating costs"
             stackId="rev"
-            stroke={CAT[4]}
-            fill={CAT[4]}
-            fillOpacity={0.8}
-            strokeWidth={1.5}
+            fill={COST_COLORS.opex}
             isAnimationActive={false}
           />
-          <Area
-            type="monotone"
-            dataKey="margin"
-            name="Gross margin"
+          <Bar
+            dataKey="ebit"
+            name="EBIT"
             stackId="rev"
-            stroke={CAT[0]}
-            fill={CAT[0]}
-            fillOpacity={0.8}
-            strokeWidth={1.5}
+            fill={COST_COLORS.ebit}
+            radius={[2, 2, 0, 0]}
             isAnimationActive={false}
           />
           <Line
             type="monotone"
-            dataKey="ebit"
-            name="EBIT"
+            dataKey="ebitLine"
+            name="EBIT (actual)"
             stroke={C.accentDark}
             strokeWidth={2.5}
-            dot={false}
+            dot={{ r: 2 }}
             isAnimationActive={false}
           />
         </ComposedChart>
