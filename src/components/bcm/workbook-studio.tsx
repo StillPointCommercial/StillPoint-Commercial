@@ -18,6 +18,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ReferenceLine,
   PieChart,
   Pie,
   Cell,
@@ -37,6 +38,13 @@ import {
 } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Slider, tbl, cx, pos } from '@/components/suite/ui'
 import { fmtEur, fmtM, fmtNum, fmtPct, fmtSignedM } from '@/lib/bcm/format'
+import {
+  ADAPTA_MARKET,
+  tierAvgValue,
+  KERN_ICP_ORGS,
+  KERN_ICP_MAX_ARR,
+  SOM_TARGET_ACCOUNTS,
+} from '@/lib/bcm/market'
 import { C, CAT, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
 import { SectionGrid, SliderGroupNote, yearRows } from './helpers'
 import {
@@ -47,21 +55,26 @@ import {
   computeWorkbookFunnel,
   computeWorkbookCosts,
   deriveCostContext,
+  personnelByEntity,
+  fteByEntity,
   DEFAULT_FUNNEL,
   type StreamKey,
   type LogoStream,
   type CrossSellLine,
   type FunnelParams,
+  type WorkbookFunnel,
   type WorkbookInputs,
   type CostContext,
   type MargesMap,
   type EntityCosts,
+  type RosterRole,
 } from '@/lib/bcm/workbook'
 import {
   parseDashboardBlock,
   parseMargins,
   parsePersonnelTotals,
   parsePersonnelRoster,
+  parseIndirecte,
   parseScenarioPaths,
 } from '@/lib/bcm/workbook-blocks'
 import {
@@ -78,6 +91,7 @@ interface WorkbookBlocks {
   dashboard: string[][]
   personnelTotals: string[][]
   personnelRoster: string[][]
+  indirecte: string[][]
   scenarioPaths: string[][]
   margins: string[][]
 }
@@ -139,6 +153,15 @@ function withFunnel(inputs: WorkbookInputs): WorkbookInputs {
   return inputs.funnel ? inputs : { ...inputs, funnel: { ...DEFAULT_FUNNEL } }
 }
 
+// Seed inputs.roster from the workbook roster when absent so the editable entity
+// allocation persists per scenario (older scenarios were saved before the roster field).
+// The bruto/soc/months stay as imported; only the pct split is user-editable.
+function withRoster(inputs: WorkbookInputs, blocks: WorkbookBlocks): WorkbookInputs {
+  if (inputs.roster) return inputs
+  const { roles } = parsePersonnelRoster(blocks.personnelRoster)
+  return roles.length > 0 ? { ...inputs, roster: roles } : inputs
+}
+
 // Normalise a (possibly partial / legacy) blocks payload to the full shape, defaulting
 // any missing tabs (older scenarios were saved before `margins` existed).
 function asBlocks(raw: unknown): WorkbookBlocks {
@@ -147,6 +170,7 @@ function asBlocks(raw: unknown): WorkbookBlocks {
     dashboard: b.dashboard ?? [],
     personnelTotals: b.personnelTotals ?? [],
     personnelRoster: b.personnelRoster ?? [],
+    indirecte: b.indirecte ?? [],
     scenarioPaths: b.scenarioPaths ?? [],
     margins: b.margins ?? [],
   }
@@ -168,7 +192,10 @@ function buildWorking(
   inputs: WorkbookInputs,
 ): Working {
   const marges = parseMargins(base.blocks.margins)
-  const costCtx = deriveCostContext(parseDashboardBlock(base.blocks.dashboard), inputs, marges)
+  // baseRoster = the roster exactly as imported (the reference allocation for live deltas),
+  // independent of any edits already living in inputs.roster.
+  const baseRoster = parsePersonnelRoster(base.blocks.personnelRoster).roles
+  const costCtx = deriveCostContext(parseDashboardBlock(base.blocks.dashboard), inputs, marges, baseRoster)
   return { ...base, baseline: deriveBaseline(base.blocks, inputs), marges, costCtx }
 }
 
@@ -221,6 +248,22 @@ function patchFunnel(inputs: WorkbookInputs, key: keyof FunnelParams, value: num
   const base = inputs.funnel ?? { ...DEFAULT_FUNNEL }
   return { ...inputs, funnel: { ...base, [key]: value } }
 }
+// Re-allocate one role's entity split (a single % field). bruto/soc/months are fixed —
+// only the pct moves — so a fresh inputs triggers the live cost recompute (zero-sum across
+// entities, group total unchanged). value is a fraction (0..1).
+function patchRosterPct(
+  inputs: WorkbookInputs,
+  idx: number,
+  entity: 'meevynd' | 'naerby' | 'holding',
+  value: number,
+): WorkbookInputs {
+  if (!inputs.roster) return inputs
+  const v = Math.min(1, Math.max(0, value))
+  return {
+    ...inputs,
+    roster: inputs.roster.map((r, i) => (i === idx ? { ...r, pct: { ...r.pct, [entity]: v } } : r)),
+  }
+}
 
 const STREAM_COLORS: Record<StreamKey, string> = { google: CAT[0], microsoft: CAT[1], puls: CAT[5] }
 const NAME_SUGGESTIONS = ['Laag', 'Midden', 'Hoog'] as const
@@ -239,14 +282,14 @@ const VIEW_OPTIONS: { value: WorkbookView; label: string }[] = [
   { value: 'revenue', label: 'Revenue & mix' },
   { value: 'funnel', label: 'Funnel' },
   { value: 'pnl', label: 'Costs & P&L' },
-  { value: 'people', label: 'People' },
+  { value: 'people', label: 'People & costs' },
 ]
 const VIEW_BLURB: Record<WorkbookView, string> = {
   scenarios: 'Your live model against the Laag / Midden / Hoog targets, plus your saved scenarios.',
   revenue: 'Edit the revenue inputs and product mix — everything on this page recomputes live.',
   funnel: 'The sales activity needed to land your new-logo counts, with lead-gen coverage.',
   pnl: 'Live cost build and EBIT per entity, recomputed from your inputs via the sheet’s margins.',
-  people: 'Headcount and personnel cost, derived from the roster in your workbook.',
+  people: 'Where personnel and overhead sit by entity — re-allocate a role and watch per-entity EBIT shift.',
 }
 
 // Plain-language description of each consolidated entity, shown in the Costs & P&L area.
@@ -342,6 +385,21 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     () => (working ? parsePersonnelRoster(working.blocks.personnelRoster) : null),
     [working],
   )
+  // Overhead (indirecte kosten) per entity per year — read-only, from the workbook.
+  const indirecte = useMemo(
+    () => (working ? parseIndirecte(working.blocks.indirecte) : null),
+    [working],
+  )
+  // FTE per entity per year from the LIVE (re-allocated) roster in inputs.
+  const fteEnt = useMemo(
+    () => (inputs?.roster ? fteByEntity(inputs.roster) : null),
+    [inputs],
+  )
+  // LIVE personnel cost per entity per year (baseline + roster re-allocation deltas).
+  const personnelEnt = useMemo(
+    () => (inputs && working ? personnelByEntity(inputs, working.costCtx) : null),
+    [inputs, working],
+  )
   const scenario = useMemo(
     () => (working ? parseScenarioPaths(working.blocks.scenarioPaths) : null),
     [working],
@@ -416,8 +474,8 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         return
       }
       const ok = json as ImportOk
-      const nextInputs = withFunnel(ok.inputs)
       const blocks = asBlocks(ok.blocks)
+      const nextInputs = withRoster(withFunnel(ok.inputs), blocks)
       setWorking(
         buildWorking(
           {
@@ -449,7 +507,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // snapshot, recomputing baseline + marges + costCtx from its blocks at this same point.
   function handleLoad(row: WorkbookScenarioRow) {
     const blocks = asBlocks(row.blocks)
-    const nextInputs = withFunnel(row.inputs)
+    const nextInputs = withRoster(withFunnel(row.inputs), blocks)
     setWorking(
       buildWorking(
         {
@@ -1281,119 +1339,139 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         </section>
       )}
 
-      {/* ── Funnel: conversion + capacity sliders; the activity table stays visible ── */}
+      {/* ── Funnel: market sizing + kern-ICP penetration (tied to the model), then the ── */}
+      {/* ── existing conversion funnel (sliders + required-activity table + coverage). ── */}
       {view === 'funnel' && funnel && (
-        <SectionGrid
-          sliders={
-            <div>
-              <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">Conversion rates</p>
-              <Slider
-                label="Lead → suspect"
-                value={inputs.funnel?.cSL ?? DEFAULT_FUNNEL.cSL}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cSL', v) : p))}
-                format={(n) => `${n}%`}
-              />
-              <Slider
-                label="Suspect → meeting"
-                value={inputs.funnel?.cLD ?? DEFAULT_FUNNEL.cLD}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cLD', v) : p))}
-                format={(n) => `${n}%`}
-              />
-              <Slider
-                label="Meeting → demo"
-                value={inputs.funnel?.cDD ?? DEFAULT_FUNNEL.cDD}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cDD', v) : p))}
-                format={(n) => `${n}%`}
-              />
-              <Slider
-                label="Demo → proposal"
-                value={inputs.funnel?.cDV ?? DEFAULT_FUNNEL.cDV}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cDV', v) : p))}
-                format={(n) => `${n}%`}
-              />
-              <Slider
-                label="Proposal → contract"
-                value={inputs.funnel?.cVC ?? DEFAULT_FUNNEL.cVC}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cVC', v) : p))}
-                format={(n) => `${n}%`}
-              />
-              <Slider
-                label="Leads we can generate / yr"
-                value={inputs.funnel?.leadCapacity ?? DEFAULT_FUNNEL.leadCapacity}
-                min={0}
-                max={500}
-                step={10}
-                onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'leadCapacity', v) : p))}
-                format={(n) => fmtNum(n)}
-              />
-              <SliderGroupNote>
-                Contracts = your new-logo counts per year; the funnel is back-calculated from them, so tweaking logos or
-                rates updates it. Exported to the Funnel tab.
-              </SliderGroupNote>
-            </div>
-          }
-        >
-          <Panel
-            title="Required activity"
-            subtitle="The funnel back-calculated from your contracts (new logos) and conversion rates."
+        <section className="space-y-6">
+          {/* Market sizing + the key new insight: kern-ICP penetration from the model. */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <MarketSizingPanel />
+            <KernIcpPenetrationPanel funnel={funnel} years={revenue.years} />
+          </div>
+
+          {/* The existing conversion funnel — sliders feed the back-calculated activity table. */}
+          <SectionGrid
+            sliders={
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-wide text-suite-ink-3">Conversion rates</p>
+                  <button
+                    onClick={() => setInputs((p) => (p ? { ...p, funnel: { ...DEFAULT_FUNNEL } } : p))}
+                    title="Reset conversion rates + lead capacity to the defaults (25/35/50/75/85 · 250)"
+                    className="inline-flex items-center gap-1 rounded-md border border-suite-border bg-suite-bg px-1.5 py-1 text-[10px] font-medium text-suite-ink-3 transition-colors hover:bg-suite-subtle hover:text-suite-ink"
+                  >
+                    <RefreshCw size={11} className="shrink-0" />
+                    Reset to default
+                  </button>
+                </div>
+                <Slider
+                  label="Lead → suspect"
+                  value={inputs.funnel?.cSL ?? DEFAULT_FUNNEL.cSL}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cSL', v) : p))}
+                  format={(n) => `${n}%`}
+                />
+                <Slider
+                  label="Suspect → meeting"
+                  value={inputs.funnel?.cLD ?? DEFAULT_FUNNEL.cLD}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cLD', v) : p))}
+                  format={(n) => `${n}%`}
+                />
+                <Slider
+                  label="Meeting → demo"
+                  value={inputs.funnel?.cDD ?? DEFAULT_FUNNEL.cDD}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cDD', v) : p))}
+                  format={(n) => `${n}%`}
+                />
+                <Slider
+                  label="Demo → proposal"
+                  value={inputs.funnel?.cDV ?? DEFAULT_FUNNEL.cDV}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cDV', v) : p))}
+                  format={(n) => `${n}%`}
+                />
+                <Slider
+                  label="Proposal → contract"
+                  value={inputs.funnel?.cVC ?? DEFAULT_FUNNEL.cVC}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'cVC', v) : p))}
+                  format={(n) => `${n}%`}
+                />
+                <Slider
+                  label="Leads we can generate / yr"
+                  value={inputs.funnel?.leadCapacity ?? DEFAULT_FUNNEL.leadCapacity}
+                  min={0}
+                  max={500}
+                  step={10}
+                  onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'leadCapacity', v) : p))}
+                  format={(n) => fmtNum(n)}
+                />
+                <SliderGroupNote>
+                  Contracts = your new-logo counts per year; the funnel is back-calculated from them, so tweaking logos
+                  or rates updates it. Exported to the Funnel tab.
+                </SliderGroupNote>
+              </div>
+            }
           >
-            <div className="overflow-x-auto">
-              <table className={tbl.table}>
-                <thead>
-                  <tr>
-                    <th className={tbl.th}>Stage</th>
-                    {revenue.years.map((y) => (
-                      <th key={y} className={tbl.thR}>
-                        {y}
-                      </th>
-                    ))}
-                    <th className={tbl.thR}>avg / mo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {funnel.stages.map((s) => (
-                    <tr key={s.stage} className={s.stage === 'Leads' ? tbl.trHighlight : tbl.tr}>
-                      <td className={cx(tbl.td, s.stage === 'Leads' && 'font-semibold')}>{s.stage}</td>
-                      {revenue.years.map((y, yi) => (
-                        <td key={y} className={cx(tbl.tdR, s.stage === 'Leads' && 'font-semibold')}>
-                          {fmtNum(Math.round(s.perYear[yi] ?? 0))}
-                        </td>
+            <Panel
+              title="Required activity"
+              subtitle="The funnel back-calculated from your contracts (new logos) and conversion rates."
+            >
+              <div className="overflow-x-auto">
+                <table className={tbl.table}>
+                  <thead>
+                    <tr>
+                      <th className={tbl.th}>Stage</th>
+                      {revenue.years.map((y) => (
+                        <th key={y} className={tbl.thR}>
+                          {y}
+                        </th>
                       ))}
-                      <td className={cx(tbl.tdR, s.stage === 'Leads' && 'font-semibold')}>
-                        {fmtNum(Math.round(s.perMonth))}
-                      </td>
+                      <th className={tbl.thR}>avg / mo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4 space-y-1 border-t border-suite-border pt-3">
-              <p className="text-xs text-suite-ink-2">
-                Total leads needed 2027–2030 = {fmtNum(Math.round(funnel.totalLeads))}
-              </p>
-              <p className={cx('text-sm font-semibold', pos(funnel.coverage - 1))}>
-                Lead-gen capacity covers {fmtPct(funnel.coverage)} of leads needed
-                {Math.max(...funnel.leadGapPerYear) > 0 &&
-                  ` · short by ~${fmtNum(Math.round(Math.max(...funnel.leadGapPerYear)))} in the peak year.`}
-              </p>
-            </div>
-          </Panel>
-        </SectionGrid>
+                  </thead>
+                  <tbody>
+                    {funnel.stages.map((s) => (
+                      <tr key={s.stage} className={s.stage === 'Leads' ? tbl.trHighlight : tbl.tr}>
+                        <td className={cx(tbl.td, s.stage === 'Leads' && 'font-semibold')}>{s.stage}</td>
+                        {revenue.years.map((y, yi) => (
+                          <td key={y} className={cx(tbl.tdR, s.stage === 'Leads' && 'font-semibold')}>
+                            {fmtNum(Math.round(s.perYear[yi] ?? 0))}
+                          </td>
+                        ))}
+                        <td className={cx(tbl.tdR, s.stage === 'Leads' && 'font-semibold')}>
+                          {fmtNum(Math.round(s.perMonth))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 space-y-1 border-t border-suite-border pt-3">
+                <p className="text-xs text-suite-ink-2">
+                  Total leads needed 2027–2030 = {fmtNum(Math.round(funnel.totalLeads))}
+                </p>
+                <p className={cx('text-sm font-semibold', pos(funnel.coverage - 1))}>
+                  Lead-gen capacity covers {fmtPct(funnel.coverage)} of leads needed
+                  {Math.max(...funnel.leadGapPerYear) > 0 &&
+                    ` · short by ~${fmtNum(Math.round(Math.max(...funnel.leadGapPerYear)))} in the peak year.`}
+                </p>
+              </div>
+            </Panel>
+          </SectionGrid>
+        </section>
       )}
 
       {/* ── Costs & P&L: group composition + KPIs, entity small-multiples, full P&L folds away ── */}
@@ -1408,59 +1486,374 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           </Panel>
         ))}
 
-      {/* ── People: FTE + personnel cost (compact) ── */}
+      {/* ── People & costs: where the heads + overhead sit by entity, and re-allocate roles ── */}
       {view === 'people' && (
-        <section className="grid gap-6 lg:grid-cols-2">
-          <Panel title="FTE by year" subtitle="Roster proxy — months active / 12.">
-            <KpiStrip>
-              {revenue.years.map((y, i) => (
-                <Kpi key={y} label={String(y)} value={fmtNum(fte[i], 1)} sub="FTE" />
-              ))}
-            </KpiStrip>
-          </Panel>
-
-          <Panel title="Revenue per FTE" subtitle="Live group revenue ÷ FTE.">
-            <LinesChart
-              data={yearRows(revenue.years, { rpf: revPerFte })}
-              xKey="year"
-              series={[{ key: 'rpf', name: 'Revenue / FTE', color: C.accentDark }]}
-              valueFmt="eur-m"
-              height={220}
-            />
-          </Panel>
-
-          {personnelTotals && personnelTotals.entities.length > 0 && (
-            <Panel title="Personnel cost by entity" className="lg:col-span-2">
-              <div className="overflow-x-auto">
-                <table className={tbl.table}>
-                  <thead>
-                    <tr>
-                      <th className={tbl.th}>Entity</th>
-                      {revenue.years.map((y) => (
-                        <th key={y} className={tbl.thR}>
-                          {y}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {personnelTotals.entities.map((e) => (
-                      <tr key={e.name} className={tbl.tr}>
-                        <td className={tbl.td}>{e.name}</td>
-                        {revenue.years.map((y, i) => (
-                          <td key={y} className={tbl.tdR}>
-                            {fmtEur(e.cost[i] ?? 0)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
-          )}
-        </section>
+        <PeopleArea
+          years={revenue.years}
+          totalFte={fte}
+          fteEnt={fteEnt}
+          personnelEnt={personnelEnt}
+          indirecte={indirecte}
+          personnelTotals={personnelTotals}
+          revPerFte={revPerFte}
+          roster={inputs.roster ?? null}
+          onPatchPct={(idx, entity, value) => setInputs((p) => (p ? patchRosterPct(p, idx, entity, value) : p))}
+        />
       )}
+    </div>
+  )
+}
+
+// --- Funnel area: market sizing (TAM/SAM/SOM) + kern-ICP penetration. Static reference
+// market data (from @/lib/bcm/market) framed against the LIVE model: cumulative new
+// accounts won = the running sum of the Contracts stage of computeWorkbookFunnel. ---
+
+// Compact TAM/SAM/SOM table from ADAPTA_MARKET. The note rides along as a row tooltip +
+// a small caption so the table stays scannable.
+function MarketSizingPanel() {
+  return (
+    <Panel
+      title="Market sizing — TAM / SAM / SOM"
+      subtitle="Kern-ICP = 220 accounts at ≈€1M ARR each; SOM = 11 new clients (5% over 3 yr)."
+    >
+      <div className="overflow-x-auto">
+        <table className={tbl.table}>
+          <thead>
+            <tr>
+              <th className={tbl.th}>Tier</th>
+              <th className={tbl.thR}>ICP orgs</th>
+              <th className={tbl.thR}>Avg ARR/org</th>
+              <th className={tbl.thR}>Market €/yr</th>
+              <th className={tbl.thR}>3-yr</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ADAPTA_MARKET.map((t) => (
+              <tr key={t.key} className={t.key === 'sam' ? tbl.trHighlight : tbl.tr} title={t.note}>
+                <td className={cx(tbl.td, t.key === 'sam' && 'font-semibold')}>{t.label}</td>
+                <td className={tbl.tdR}>{fmtNum(t.orgs)}</td>
+                <td className={tbl.tdR}>{fmtEur(tierAvgValue(t))}</td>
+                <td className={tbl.tdR}>{fmtM(t.perYear)}</td>
+                <td className={tbl.tdR}>{fmtEur(t.threeYear)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-4 border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
+        TAM = ICP-aangrenzende NL zorg; SAM = kern-ICP (VVT-stichtingen 800–15K medew., ≈€1M ARR elk); SOM = realistische
+        3-jaars capture. Hover a row for its definition.
+      </p>
+    </Panel>
+  )
+}
+
+// THE key new insight, tied to the model (not the other graphs): cumulative new accounts
+// won across 2027–2030 = the running sum of the Contracts stage of computeWorkbookFunnel,
+// framed against the kern-ICP (220) and the SOM target (11 new clients).
+function KernIcpPenetrationPanel({ funnel, years }: { funnel: WorkbookFunnel; years: number[] }) {
+  const last = years.length - 1
+  // New logos per year = the Contracts stage (that year's new accounts).
+  const contracts = funnel.stages.find((s) => s.stage === 'Contracts')?.perYear ?? years.map(() => 0)
+  // Running cumulative new accounts won across the years.
+  const cumulative = contracts.reduce<number[]>((acc, v) => {
+    acc.push((acc[acc.length - 1] ?? 0) + (v || 0))
+    return acc
+  }, [])
+  const cumTotal = Math.round(cumulative[last] ?? 0)
+  const pctOfKern = KERN_ICP_ORGS > 0 ? cumTotal / KERN_ICP_ORGS : 0
+  const vsSomMultiple = SOM_TARGET_ACCOUNTS > 0 ? cumTotal / SOM_TARGET_ACCOUNTS : 0
+  const chartData = years.map((y, i) => ({ year: String(y), cumulative: Math.round(cumulative[i] ?? 0) }))
+
+  return (
+    <Panel
+      title="Kern-ICP penetration"
+      subtitle="Cumulative new accounts won (running total of the funnel's Contracts) against the 220-account kern and the SOM target of 11."
+    >
+      <KpiStrip>
+        <Kpi label={`New accounts by ${years[last]}`} value={fmtNum(cumTotal)} sub="cumulative" accent />
+        <Kpi label="% of kern-ICP" value={fmtPct(pctOfKern)} sub={`of ${fmtNum(KERN_ICP_ORGS)} accounts`} />
+        <Kpi
+          label="vs SOM target"
+          value={`${fmtNum(cumTotal)} vs ${fmtNum(SOM_TARGET_ACCOUNTS)}`}
+          sub={`${fmtNum(vsSomMultiple, 1)}x the 5% / 3-yr target`}
+        />
+      </KpiStrip>
+
+      <div className="mt-4" style={{ width: '100%', height: 260 }}>
+        <ResponsiveContainer>
+          <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
+            <CartesianGrid stroke={C.grid} vertical={false} />
+            <XAxis dataKey="year" tick={{ fill: C.ink3, fontSize: 11 }} tickLine={false} axisLine={{ stroke: C.grid }} />
+            <YAxis tick={{ fill: C.ink3, fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
+            <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtNum(Math.round(v)))} cursor={{ fill: 'transparent' }} />
+            <ReferenceLine
+              y={SOM_TARGET_ACCOUNTS}
+              stroke={C.warm}
+              strokeDasharray="5 4"
+              label={{ value: `SOM target ${SOM_TARGET_ACCOUNTS}`, position: 'insideTopRight', fill: C.warm, fontSize: 10 }}
+            />
+            <Bar dataKey="cumulative" name="Cumulative new accounts" fill={C.accent} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <p className="mt-4 border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
+        The kern-ICP is {fmtNum(KERN_ICP_ORGS)} accounts; max ARR per kern-ICP account ≈ {fmtEur(KERN_ICP_MAX_ARR)}.
+      </p>
+    </Panel>
+  )
+}
+
+// --- People & costs area: visual-first. Where the heads + overhead sit by entity, how
+// they grow, and an editable roster whose entity-allocation re-allocates personnel cost
+// between entities (zero-sum at group level) — flowing straight into the Costs & P&L EBIT.
+const PEOPLE_ENTITIES: { key: 'meevynd' | 'naerby' | 'holding'; label: string; color: string }[] = [
+  { key: 'meevynd', label: 'Meevynd', color: CAT[0] },
+  { key: 'naerby', label: 'Naerby', color: CAT[1] },
+  { key: 'holding', label: 'Holding', color: CAT[6] },
+]
+
+function PeopleArea({
+  years,
+  totalFte,
+  fteEnt,
+  personnelEnt,
+  indirecte,
+  personnelTotals,
+  revPerFte,
+  roster,
+  onPatchPct,
+}: {
+  years: number[]
+  totalFte: number[]
+  fteEnt: { meevynd: number[]; naerby: number[]; holding: number[] } | null
+  personnelEnt: { meevynd: number[]; naerby: number[]; holding: number[] } | null
+  indirecte: { meevynd: number[]; naerby: number[]; holding: number[] } | null
+  personnelTotals: { entities: { name: string; cost: number[] }[] } | null
+  revPerFte: number[]
+  roster: RosterRole[] | null
+  onPatchPct: (idx: number, entity: 'meevynd' | 'naerby' | 'holding', value: number) => void
+}) {
+  const last = years.length - 1
+  const entityBars = PEOPLE_ENTITIES.map((e) => ({ key: e.key, name: e.label, color: e.color }))
+
+  return (
+    <section className="space-y-6">
+      {/* ── 1) WHERE THE HEADS ARE — FTE by entity over the years + total-FTE KPIs ── */}
+      <div>
+        <h2 className="text-base font-semibold text-suite-ink">Where the heads are</h2>
+        <p className="mt-0.5 text-xs text-suite-ink-3">
+          FTE by entity over 2027–2030 (roster proxy — months active / 12, split by each role’s entity allocation), and
+          how headcount grows.
+        </p>
+      </div>
+
+      <KpiStrip>
+        {years.map((y, i) => (
+          <Kpi key={y} label={`Total FTE ${y}`} value={fmtNum(totalFte[i], 1)} sub="roster proxy" accent={i === last} />
+        ))}
+      </KpiStrip>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="FTE by entity" subtitle="Stacked headcount per BV — where the people sit and how they grow.">
+          {fteEnt ? (
+            <StackedBarsChart
+              data={yearRows(years, { meevynd: fteEnt.meevynd, naerby: fteEnt.naerby, holding: fteEnt.holding })}
+              xKey="year"
+              bars={entityBars}
+              valueFmt="num"
+              height={300}
+            />
+          ) : (
+            <p className="text-xs text-suite-ink-3">No roster found in this workbook.</p>
+          )}
+        </Panel>
+
+        <Panel title="Revenue per FTE" subtitle="Live group revenue ÷ total FTE — operating leverage as you grow.">
+          <LinesChart
+            data={yearRows(years, { rpf: revPerFte })}
+            xKey="year"
+            series={[{ key: 'rpf', name: 'Revenue / FTE', color: C.accentDark }]}
+            valueFmt="eur-m"
+            height={300}
+          />
+        </Panel>
+      </div>
+
+      {/* ── 2) WHERE THE COSTS SIT — personnel by entity + overhead by entity ── */}
+      <div className="pt-1">
+        <h2 className="text-base font-semibold text-suite-ink">Where the costs sit</h2>
+        <p className="mt-0.5 text-xs text-suite-ink-3">
+          Personnel cost (live — reflects any re-allocation below) and overhead (indirecte kosten) by entity. These are
+          the fixed costs that rise as the business grows.
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel
+          title="Personnel cost by entity"
+          subtitle="Loaded personnel cost per BV — re-allocating a role below shifts cost between these bars (group total unchanged)."
+        >
+          {personnelEnt ? (
+            <>
+              <StackedBarsChart
+                data={yearRows(years, {
+                  meevynd: personnelEnt.meevynd,
+                  naerby: personnelEnt.naerby,
+                  holding: personnelEnt.holding,
+                })}
+                xKey="year"
+                bars={entityBars}
+                valueFmt="eur-m"
+                height={300}
+              />
+              <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
+                Total personnel {years[last]} ={' '}
+                <span className="font-semibold text-suite-ink">
+                  {fmtM(
+                    (personnelEnt.meevynd[last] ?? 0) +
+                      (personnelEnt.naerby[last] ?? 0) +
+                      (personnelEnt.holding[last] ?? 0),
+                  )}
+                </span>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-suite-ink-3">No personnel baseline found in this workbook.</p>
+          )}
+        </Panel>
+
+        <Panel
+          title="Overhead by entity"
+          subtitle="Indirecte kosten per BV over 2027–2030 — what rises with growth beyond people and COGS."
+        >
+          {indirecte &&
+          (indirecte.meevynd.some((v) => v) || indirecte.naerby.some((v) => v) || indirecte.holding.some((v) => v)) ? (
+            <StackedBarsChart
+              data={yearRows(years, {
+                meevynd: indirecte.meevynd,
+                naerby: indirecte.naerby,
+                holding: indirecte.holding,
+              })}
+              xKey="year"
+              bars={entityBars}
+              valueFmt="eur-m"
+              height={300}
+            />
+          ) : (
+            <p className="text-xs text-suite-ink-3">No indirecte-kosten block found in this workbook.</p>
+          )}
+        </Panel>
+      </div>
+
+      {/* Loaded personnel cost per entity straight from the Personeel tab (reference). */}
+      {personnelTotals && personnelTotals.entities.length > 0 && (
+        <Foldout label="Show loaded personnel cost by entity (from the Personeel tab)">
+          <div className="overflow-x-auto">
+            <table className={tbl.table}>
+              <thead>
+                <tr>
+                  <th className={tbl.th}>Entity</th>
+                  {years.map((y) => (
+                    <th key={y} className={tbl.thR}>
+                      {y}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {personnelTotals.entities.map((e) => (
+                  <tr key={e.name} className={tbl.tr}>
+                    <td className={tbl.td}>{e.name}</td>
+                    {years.map((y, i) => (
+                      <td key={y} className={tbl.tdR}>
+                        {fmtEur(e.cost[i] ?? 0)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Foldout>
+      )}
+
+      {/* ── 3) THE ROSTER — editable entity allocation per role ── */}
+      {roster && roster.length > 0 && (
+        <Foldout label="Show roster">
+          <RosterTable years={years} roster={roster} onPatchPct={onPatchPct} />
+        </Foldout>
+      )}
+    </section>
+  )
+}
+
+// Editable roster: one row per role with its active months and three % inputs (Meevynd /
+// Naerby / Holding). Editing a % re-allocates that role's cost between entities — zero-sum
+// at group level — and flows into the Costs & P&L EBIT. bruto/soc/months are fixed.
+function RosterTable({
+  years,
+  roster,
+  onPatchPct,
+}: {
+  years: number[]
+  roster: RosterRole[]
+  onPatchPct: (idx: number, entity: 'meevynd' | 'naerby' | 'holding', value: number) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-suite-ink-2">
+        Re-allocating a role’s entity split shifts its cost between entities — the group total is unchanged — and flows
+        into the Costs &amp; P&amp;L EBIT. Salary, social charges and active months come from the workbook and stay
+        fixed. Values are %.
+      </p>
+      <div className="overflow-x-auto">
+        <table className={tbl.table}>
+          <thead>
+            <tr>
+              <th className={tbl.th}>Role</th>
+              <th className={tbl.thR}>Months active</th>
+              {PEOPLE_ENTITIES.map((e) => (
+                <th key={e.key} className={tbl.thR}>
+                  {e.label} %
+                </th>
+              ))}
+              <th className={tbl.thR}>Σ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster.map((role, idx) => {
+              const sum = role.pct.meevynd + role.pct.naerby + role.pct.holding
+              const sumPct = Math.round(sum * 100)
+              return (
+                <tr key={`${role.name}-${idx}`} className={tbl.tr}>
+                  <td className={tbl.td}>
+                    <div className="font-medium text-suite-ink">{role.name}</div>
+                    <div className="text-[11px] text-suite-ink-3">
+                      {fmtEur(role.bruto)}/mo · soc {fmtPct(role.soc, 0)}
+                    </div>
+                  </td>
+                  <td className={cx(tbl.tdR, 'text-[11px] text-suite-ink-3')}>{role.months.join(' / ')}</td>
+                  {PEOPLE_ENTITIES.map((e) => (
+                    <td key={e.key} className="w-24 px-3 py-2">
+                      <NumCell
+                        value={Math.round((role.pct[e.key] ?? 0) * 100)}
+                        step={5}
+                        onChange={(v) => onPatchPct(idx, e.key, v / 100)}
+                      />
+                    </td>
+                  ))}
+                  <td className={cx(tbl.tdR, 'text-[11px] tabular-nums', sumPct === 100 ? 'text-suite-ink-3' : 'text-suite-neg')}>
+                    {sumPct}%
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

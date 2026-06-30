@@ -32,6 +32,8 @@ export interface SheetMapping {
     personnelTotals: string
     /** Personeel roster: one row per role (salary, month-ramp, entity split) for FTE/headcount. */
     personnelRoster: string
+    /** Indirecte kosten tab: per-entity overhead post blocks (Jaar 2027-2030 in cols K-N). */
+    indirecte: string
     /** Scenario tab: Laag / Midden / Hoog target paths. */
     scenarioPaths: string
     /** Marges tab: category -> purchase % (fraction of category revenue that is COGS). */
@@ -54,6 +56,7 @@ export const ADAPTA_MAPPING: SheetMapping = {
     dashboard: 'Dashboard!A4:E49',
     personnelTotals: 'Personeel!A57:I60',
     personnelRoster: 'Personeel!A3:K36',
+    indirecte: 'Indirecte kosten!A4:N121',
     scenarioPaths: 'Scenario!A8:F11',
     margins: 'Marges!A3:B17',
   },

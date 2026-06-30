@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 export interface SuiteUser {
@@ -40,15 +40,6 @@ export function SuiteHeader({
               Stillpoint <span className="font-normal text-suite-ink-3">Suite</span>
             </span>
           </Link>
-          {back && (
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1 text-sm text-suite-ink-2 transition-colors hover:text-suite-ink"
-            >
-              <ArrowLeft size={15} />
-              All tools
-            </Link>
-          )}
           {title && <span className="text-sm font-medium text-suite-ink">{title}</span>}
         </div>
 

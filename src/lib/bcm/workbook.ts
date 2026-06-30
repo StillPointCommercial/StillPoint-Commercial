@@ -3,11 +3,19 @@
 // copy -> tweak -> export round-trip. Validated against the workbook's own
 // subtotals in workbook.test.ts, so the app's live numbers match the document.
 
-import type { DashboardBlock } from './workbook-blocks'
+import type { DashboardBlock, RosterRole } from './workbook-blocks'
+
+export type { RosterRole } from './workbook-blocks'
 
 export const SHEET_YEARS = [2027, 2028, 2029, 2030] as const
 export type Entity = 'meevynd' | 'naerby'
 export type StreamKey = 'google' | 'microsoft' | 'puls'
+
+/** Personnel cost entities (loon + overhead are allocated across all three BVs). */
+export type CostEntity = 'meevynd' | 'naerby' | 'holding'
+
+/** Cumulative loonindexatie factor per SHEET_YEAR (2027 = 1, then +4% compounding). */
+export const PERSONNEL_INDEX = [1, 1.04, 1.082, 1.125] as const
 
 export interface LogoStream {
   key: StreamKey
@@ -52,6 +60,9 @@ export interface WorkbookInputs {
   mix: MixRow[]
   crossSell: CrossSellLine[]
   funnel?: FunnelParams // app-side, not from the sheet
+  /** Personnel roster, matched by index to the imported baseRoster. bruto/soc/months are
+   *  fixed; only the per-role entity allocation (pct) is editable. Absent = no re-allocation. */
+  roster?: RosterRole[]
 }
 
 export interface WorkbookRevenue {
@@ -98,6 +109,29 @@ export function computeWorkbookRevenue(inp: WorkbookInputs): WorkbookRevenue {
 
   const totalNew = SHEET_YEARS.map((_, i) => meevyndNew[i] + naerbyNew[i])
   return { years: [...SHEET_YEARS], logoOmzet, meevyndNew, naerbyNew, totalNew }
+}
+
+/**
+ * Annual loaded cost of one roster role per SHEET_YEAR: bruto monthly salary × months
+ * active × (1 + social charges), grown by the cumulative loonindexatie factor. A
+ * full-year role costs bruto × 12 × (1 + soc) × INDEX[y]. Faithful to the Personeel tab.
+ */
+export function roleCost(role: RosterRole): number[] {
+  return SHEET_YEARS.map((_, y) => PERSONNEL_INDEX[y] * role.bruto * (role.months[y] || 0) * (1 + role.soc))
+}
+
+/** FTE per entity per year = Σ_role (months[y]/12) × that role's entity allocation share. */
+export function fteByEntity(roster: RosterRole[]): { meevynd: number[]; naerby: number[]; holding: number[] } {
+  const out = { meevynd: zeros(), naerby: zeros(), holding: zeros() }
+  for (const role of roster) {
+    for (let y = 0; y < N; y++) {
+      const f = Math.min(12, role.months[y] || 0) / 12
+      out.meevynd[y] += f * (role.pct.meevynd || 0)
+      out.naerby[y] += f * (role.pct.naerby || 0)
+      out.holding[y] += f * (role.pct.holding || 0)
+    }
+  }
+  return out
 }
 
 // --- parse / serialize for the Google Sheets round-trip ---
@@ -300,6 +334,9 @@ interface EntityCostBase {
   baselineOmzet: number[]
   baselineCogs: number[]
   fixedOpex: number[]
+  /** fixedOpex minus the snapshot personnel for this entity (overhead + depreciation + ...);
+   *  live personnel is re-added on top so re-allocations move cost between entities. */
+  nonPersonnelOpex: number[]
 }
 
 export interface CostContext {
@@ -307,6 +344,10 @@ export interface CostContext {
   naerby: EntityCostBase
   holding: EntityCostBase
   groep: EntityCostBase
+  /** Authoritative baseline personnel per entity per year, straight from the Dashboard. */
+  basePersonnel: { meevynd: number[]; naerby: number[]; holding: number[] }
+  /** The roster exactly as imported — the reference allocation for computing live deltas. */
+  baseRoster: RosterRole[]
 }
 
 export interface EntityCosts {
@@ -370,6 +411,7 @@ export function deriveCostContext(
   dashboard: DashboardBlock,
   importInputs: WorkbookInputs,
   marges: MargesMap,
+  roster: RosterRole[] = [],
 ): CostContext {
   const rev = computeWorkbookRevenue(importInputs)
   const cogs = newCogsByEntity(importInputs, marges)
@@ -380,16 +422,32 @@ export function deriveCostContext(
     holding: zeros(),
     groep: sumYears(cogs.meevynd, cogs.naerby),
   }
+  // Authoritative baseline personnel per BV, straight from the Dashboard's Personeelskosten.
+  const personnelOf = (name: string): number[] => SHEET_YEARS.map((_, i) => findEntity(dashboard, name)?.personeel[i] ?? 0)
+  const basePersonnel = {
+    meevynd: personnelOf('Meevynd'),
+    naerby: personnelOf('Naerby'),
+    holding: personnelOf('Holding'),
+  }
+  const groepPersonnel = sumYears(sumYears(basePersonnel.meevynd, basePersonnel.naerby), basePersonnel.holding)
+  const personnelByKey: Record<keyof typeof newOmzet, number[]> = {
+    meevynd: basePersonnel.meevynd,
+    naerby: basePersonnel.naerby,
+    holding: basePersonnel.holding,
+    groep: groepPersonnel,
+  }
   const base = (name: string, key: keyof typeof newOmzet): EntityCostBase => {
     const e = findEntity(dashboard, name)
     const snapOmzet = e?.omzet ?? []
     const snapCogs = e?.cogs ?? []
     const snapBruto = e?.brutomarge ?? []
     const snapEbit = e?.ebit ?? []
+    const fixedOpex = subArr(snapBruto, snapEbit)
     return {
       baselineOmzet: subArr(snapOmzet, newOmzet[key]),
       baselineCogs: subArr(snapCogs, newCogs[key]),
-      fixedOpex: subArr(snapBruto, snapEbit),
+      fixedOpex,
+      nonPersonnelOpex: subArr(fixedOpex, personnelByKey[key]),
     }
   }
   return {
@@ -397,12 +455,53 @@ export function deriveCostContext(
     naerby: base('Naerby', 'naerby'),
     holding: base('Holding', 'holding'),
     groep: base('Groep', 'groep'),
+    basePersonnel,
+    baseRoster: roster,
   }
 }
 
 /**
+ * LIVE personnel cost per entity per year. Starts from the authoritative Dashboard
+ * baseline, then applies the re-allocation delta of every edited role:
+ *   livePersonnel[e][y] = basePersonnel[e][y] + Σ_role roleCost(role)[y] × (livePct − basePct)
+ * The live pct comes from `inp.roster` (matched by index to `ctx.baseRoster`); the base
+ * pct from `ctx.baseRoster`. With no roster (or identical pct) the deltas are zero, so
+ * live personnel == basePersonnel and the EBIT is unchanged. Because a role's cost is a
+ * fixed amount merely redistributed across entities, the deltas sum to zero — re-allocation
+ * is zero-sum across entities and the GROUP personnel (hence group EBIT) is preserved.
+ */
+export function personnelByEntity(
+  inp: WorkbookInputs,
+  ctx: CostContext,
+): { meevynd: number[]; naerby: number[]; holding: number[] } {
+  const live = {
+    meevynd: [...ctx.basePersonnel.meevynd],
+    naerby: [...ctx.basePersonnel.naerby],
+    holding: [...ctx.basePersonnel.holding],
+  }
+  const liveRoster = inp.roster
+  if (!liveRoster) return live
+  ctx.baseRoster.forEach((baseRole, i) => {
+    const liveRole = liveRoster[i]
+    if (!liveRole) return
+    const cost = roleCost(baseRole) // bruto/soc/months are fixed → cost from the base role
+    const dM = (liveRole.pct.meevynd || 0) - (baseRole.pct.meevynd || 0)
+    const dN = (liveRole.pct.naerby || 0) - (baseRole.pct.naerby || 0)
+    const dH = (liveRole.pct.holding || 0) - (baseRole.pct.holding || 0)
+    for (let y = 0; y < N; y++) {
+      live.meevynd[y] += cost[y] * dM
+      live.naerby[y] += cost[y] * dN
+      live.holding[y] += cost[y] * dH
+    }
+  })
+  return live
+}
+
+/**
  * Compute the LIVE P&L: baseline (frozen) + live new revenue/COGS from the current
- * inputs, with fixed opex held constant. EBIT = brutomarge - fixedOpex.
+ * inputs. Operating cost = non-personnel opex (frozen) + LIVE personnel (re-allocated
+ * by the roster); EBIT = brutomarge - operating cost. With no roster edits this is
+ * identical to the snapshot fixedOpex, so the import reproduces the Dashboard EBIT.
  */
 export function computeWorkbookCosts(inp: WorkbookInputs, ctx: CostContext, marges: MargesMap): WorkbookCosts {
   const rev = computeWorkbookRevenue(inp)
@@ -414,11 +513,19 @@ export function computeWorkbookCosts(inp: WorkbookInputs, ctx: CostContext, marg
     holding: zeros(),
     groep: sumYears(cogs.meevynd, cogs.naerby),
   }
+  const livePersonnel = personnelByEntity(inp, ctx)
+  const groepPersonnel = sumYears(sumYears(livePersonnel.meevynd, livePersonnel.naerby), livePersonnel.holding)
+  const liveOpex: Record<keyof typeof newOmzet, number[]> = {
+    meevynd: sumYears(ctx.meevynd.nonPersonnelOpex, livePersonnel.meevynd),
+    naerby: sumYears(ctx.naerby.nonPersonnelOpex, livePersonnel.naerby),
+    holding: sumYears(ctx.holding.nonPersonnelOpex, livePersonnel.holding),
+    groep: sumYears(ctx.groep.nonPersonnelOpex, groepPersonnel),
+  }
   const build = (name: string, base: EntityCostBase, key: keyof typeof newOmzet): EntityCosts => {
     const omzet = sumYears(base.baselineOmzet, newOmzet[key])
     const c = sumYears(base.baselineCogs, newCogs[key])
     const brutomarge = subArr(omzet, c)
-    const ebit = subArr(brutomarge, base.fixedOpex)
+    const ebit = subArr(brutomarge, liveOpex[key])
     return {
       name,
       omzet,

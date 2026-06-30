@@ -44,6 +44,7 @@ export async function POST(req: Request): Promise<Response> {
       rb.dashboard,
       rb.personnelTotals,
       rb.personnelRoster,
+      rb.indirecte,
       rb.scenarioPaths,
       rb.margins,
     ]
@@ -69,6 +70,7 @@ export async function POST(req: Request): Promise<Response> {
         dashboard: got[rb.dashboard] ?? [],
         personnelTotals: got[rb.personnelTotals] ?? [],
         personnelRoster: got[rb.personnelRoster] ?? [],
+        indirecte: got[rb.indirecte] ?? [],
         scenarioPaths: got[rb.scenarioPaths] ?? [],
         margins: got[rb.margins] ?? [],
       },

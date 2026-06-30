@@ -11,10 +11,13 @@ import {
   newCogsByEntity,
   deriveCostContext,
   computeWorkbookCosts,
+  roleCost,
+  PERSONNEL_INDEX,
+  SHEET_YEARS,
   type WorkbookInputs,
   type MargesMap,
 } from './workbook'
-import type { DashboardBlock, EntityPnl } from './workbook-blocks'
+import type { DashboardBlock, EntityPnl, RosterRole } from './workbook-blocks'
 
 const r2 = (a: number[]) => a.map((x) => Math.round(x * 100) / 100)
 
@@ -217,6 +220,65 @@ describe('workbook live cost / EBIT model (faithful to Marges + Dashboard)', () 
     }
     const grownEbit = computeWorkbookCosts(grown, ctx, ADAPTA_MARGES).groep.ebit[3]
     expect(grownEbit).toBeGreaterThan(baseEbit)
+  })
+
+  // A small roster (loaded cost = bruto × months × (1+soc) × INDEX), allocated by H/I/J.
+  const sampleRoster: RosterRole[] = [
+    {
+      name: 'Engineer',
+      bruto: 6000,
+      soc: 0.3,
+      months: [12, 12, 12, 12],
+      pct: { meevynd: 1, naerby: 0, holding: 0 },
+    },
+    {
+      name: 'Consultant',
+      bruto: 5000,
+      soc: 0.3,
+      months: [6, 12, 12, 12],
+      pct: { meevynd: 0.5, naerby: 0.5, holding: 0 },
+    },
+  ]
+
+  it('roleCost for a 12-month role = bruto × 12 × (1 + soc) × INDEX[y]', () => {
+    const c = roleCost(sampleRoster[0])
+    SHEET_YEARS.forEach((_, y) => {
+      expect(c[y]).toBeCloseTo(6000 * 12 * 1.3 * PERSONNEL_INDEX[y], 4)
+    })
+    // A part-year role only counts its active months.
+    expect(roleCost(sampleRoster[1])[0]).toBeCloseTo(5000 * 6 * 1.3 * PERSONNEL_INDEX[0], 4)
+  })
+
+  it('with no roster edits, group + per-entity EBIT are unchanged (still reproduces the Dashboard)', () => {
+    const ctxNoRoster = deriveCostContext(fakeDash, ADAPTA, ADAPTA_MARGES)
+    const baseline = computeWorkbookCosts(ADAPTA, ctxNoRoster, ADAPTA_MARGES)
+    // Same roster passed both as the base AND the live roster (zero deltas).
+    const ctx = deriveCostContext(fakeDash, ADAPTA, ADAPTA_MARGES, sampleRoster)
+    const withRoster = computeWorkbookCosts({ ...ADAPTA, roster: sampleRoster }, ctx, ADAPTA_MARGES)
+    const snap = [682367.91, 674555.88, 1529526.28, 4239734.5]
+    ;(['meevynd', 'naerby', 'holding', 'groep'] as const).forEach((k) => {
+      withRoster[k].ebit.forEach((v, i) => expect(v).toBeCloseTo(baseline[k].ebit[i], 4))
+    })
+    snap.forEach((v, i) => expect(withRoster.groep.ebit[i]).toBeCloseTo(v, 0))
+  })
+
+  it('moving a role fully from Meevynd to Naerby shifts that role’s cost between the two entities, group EBIT unchanged', () => {
+    const ctx = deriveCostContext(fakeDash, ADAPTA, ADAPTA_MARGES, sampleRoster)
+    const before = computeWorkbookCosts({ ...ADAPTA, roster: sampleRoster }, ctx, ADAPTA_MARGES)
+    // Re-allocate the Engineer (12 months, 100% Meevynd) entirely to Naerby.
+    const moved: RosterRole[] = sampleRoster.map((r, i) =>
+      i === 0 ? { ...r, pct: { meevynd: 0, naerby: 1, holding: 0 } } : r,
+    )
+    const after = computeWorkbookCosts({ ...ADAPTA, roster: moved }, ctx, ADAPTA_MARGES)
+    const cost = roleCost(sampleRoster[0])
+    SHEET_YEARS.forEach((_, y) => {
+      // The role's cost leaves Meevynd (its EBIT rises) and lands on Naerby (its EBIT falls)
+      // by exactly that role's cost — a clean transfer of the same amount.
+      expect(after.meevynd.ebit[y]).toBeCloseTo(before.meevynd.ebit[y] + cost[y], 4)
+      expect(after.naerby.ebit[y]).toBeCloseTo(before.naerby.ebit[y] - cost[y], 4)
+      // The two moves cancel, so GROUP EBIT is preserved — the re-allocation is zero-sum.
+      expect(after.groep.ebit[y]).toBeCloseTo(before.groep.ebit[y], 4)
+    })
   })
 })
 
