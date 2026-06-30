@@ -45,8 +45,8 @@ import {
   KERN_ICP_MAX_ARR,
   SOM_TARGET_ACCOUNTS,
 } from '@/lib/bcm/market'
-import { C, CAT, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
-import { SectionGrid, SliderGroupNote, yearRows } from './helpers'
+import { C, CAT, SEMANTIC, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
+import { SectionGrid, yearRows } from './helpers'
 import {
   computeWorkbookRevenue,
   computeWorkbookMix,
@@ -284,22 +284,6 @@ const VIEW_OPTIONS: { value: WorkbookView; label: string }[] = [
   { value: 'pnl', label: 'Costs & P&L' },
   { value: 'people', label: 'People & costs' },
 ]
-const VIEW_BLURB: Record<WorkbookView, string> = {
-  scenarios: 'Your live model against the Laag / Midden / Hoog targets, plus your saved scenarios.',
-  revenue: 'Edit the revenue inputs and product mix — everything on this page recomputes live.',
-  funnel: 'The sales activity needed to land your new-logo counts, with lead-gen coverage.',
-  pnl: 'Live cost build and EBIT per entity, recomputed from your inputs via the sheet’s margins.',
-  people: 'Where personnel and overhead sit by entity — re-allocate a role and watch per-entity EBIT shift.',
-}
-
-// Plain-language description of each consolidated entity, shown in the Costs & P&L area.
-const ENTITY_BLURB: Record<string, string> = {
-  Groep: 'Groep = consolidated across all three BVs.',
-  Meevynd: 'Meevynd = Tech BV.',
-  Naerby: 'Naerby = Innovatie BV.',
-  Holding: 'Holding = Business Support.',
-}
-
 function fmtUpdated(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
@@ -852,7 +836,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               </>
             )}
           </div>
-          {working.copyUrl ? (
+          {working.copyUrl && (
             <a
               href={working.copyUrl}
               target="_blank"
@@ -862,8 +846,6 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               Open this scenario’s Sheet copy
               <ExternalLink size={12} className="shrink-0" />
             </a>
-          ) : (
-            <p className="mt-1 text-xs text-suite-ink-3">Draft preview — save as new to create a Sheet copy.</p>
           )}
         </div>
 
@@ -930,33 +912,18 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       {/* ── Primary area navigation (the page has no top tabs) ── */}
       <div className="flex flex-wrap items-center gap-3">
         <Segmented<WorkbookView> options={VIEW_OPTIONS} value={view} onChange={setView} />
-        <p className="text-xs text-suite-ink-3">{VIEW_BLURB[view]}</p>
       </div>
 
       {/* ── Scenarios: the live model vs the fixed Doelpad plan, then saved variants ── */}
       {view === 'scenarios' && (
         <section className="space-y-6">
-          <div>
-            <h2 className="text-base font-semibold text-suite-ink">Werkende model vs Doelpad (plan)</h2>
-            <p className="mt-0.5 text-xs text-suite-ink-3">
-              The model is what you edit here (2027–2030). The Doelpaden are the fixed plan targets (commercieel plan
-              v3.0) you compare against.
-            </p>
-          </div>
-
           <section className="grid gap-6 lg:grid-cols-2">
-            <Panel
-              title="Werkende model vs Doelpad"
-              subtitle="Your live model (solid) over the full 2026–2030 axis against the fixed Laag / Midden / Hoog plan paths (dashed)."
-            >
+            <Panel title="Werkende model vs Doelpad">
               <LinesChart data={planChartRows} xKey="year" series={planSeries} valueFmt="eur-m" />
             </Panel>
 
             {scenario ? (
-              <Panel
-                title="Model vs plan — by year"
-                subtitle="Live model against each Doelpad over 2026–2030, with the gap to Midden. The model has no 2026 value."
-              >
+              <Panel title="Model vs plan — by year">
                 <div className="overflow-x-auto">
                   <table className={tbl.table}>
                     <thead>
@@ -994,7 +961,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 </div>
               </Panel>
             ) : (
-              <Panel title="Model vs plan — by year" subtitle="Plan paths appear once the workbook includes them.">
+              <Panel title="Model vs plan — by year">
                 <p className="text-xs text-suite-ink-3">
                   No Laag / Midden / Hoog plan paths were found in this workbook’s dashboard.
                 </p>
@@ -1002,10 +969,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             )}
           </section>
 
-          <Panel
-            title="Saved scenarios — your model variants"
-            subtitle="2030 group revenue + EBIT for each saved scenario, computed from its stored inputs + snapshot. A separate thing from both the live model and the plan."
-          >
+          <Panel title="Saved scenarios">
             <SavedScenarioComparison scenarios={scenarios} activeId={activeId} onLoad={handleLoad} />
           </Panel>
         </section>
@@ -1183,10 +1147,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           {/* ── RIGHT: the visuals — the focus, large and full-width when collapsed ── */}
           <div className="min-w-0 flex-1 space-y-5">
             {/* 1 — Where the growth comes from: new logos vs cross-sell */}
-            <Panel
-              title="Where the growth comes from"
-              subtitle="New revenue 2027–2030, split by motion: landing new logos versus expanding existing accounts."
-            >
+            <Panel title="Where the growth comes from">
               <StackedBarsChart
                 data={yearRows(byMotion.years, {
                   newLogos: byMotion.newLogos,
@@ -1194,8 +1155,8 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                 })}
                 xKey="year"
                 bars={[
-                  { key: 'newLogos', name: 'New logos', color: CAT[0] },
-                  { key: 'crossSell', name: 'Cross-sell & expansion', color: CAT[2] },
+                  { key: 'newLogos', name: 'New logos', color: SEMANTIC.newBiz },
+                  { key: 'crossSell', name: 'Cross-sell & expansion', color: SEMANTIC.expand },
                 ]}
                 valueFmt="eur-m"
                 height={300}
@@ -1215,10 +1176,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             </Panel>
 
             {/* 2 — What we're selling: category revenue over time + 2030 mix doughnut */}
-            <Panel
-              title="What we're selling"
-              subtitle="New revenue by product category over 2027–2030, with the final-year mix at a glance."
-            >
+            <Panel title="What we're selling">
               <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
                 <StackedAreaChart
                   data={yearRows(
@@ -1263,10 +1221,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
             {/* 3 — Expansion & cross-sell (Blok 2): tall contribution chart; values fold away */}
             {inputs.crossSell.length > 0 && (
-              <Panel
-                title="Expansion & cross-sell (Blok 2)"
-                subtitle="The expansion plan into the existing base over 2027–2030 — one line per offer, including the irregular hardware waves."
-              >
+              <Panel title="Expansion & cross-sell (Blok 2)">
                 <div className="h-96">
                   <StackedBarsChart
                     data={revenue.years.map((y, yi) => {
@@ -1418,17 +1373,10 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
                   onChange={(v) => setInputs((p) => (p ? patchFunnel(p, 'leadCapacity', v) : p))}
                   format={(n) => fmtNum(n)}
                 />
-                <SliderGroupNote>
-                  Contracts = your new-logo counts per year; the funnel is back-calculated from them, so tweaking logos
-                  or rates updates it. Exported to the Funnel tab.
-                </SliderGroupNote>
               </div>
             }
           >
-            <Panel
-              title="Required activity"
-              subtitle="The funnel back-calculated from your contracts (new logos) and conversion rates."
-            >
+            <Panel title="Required activity">
               <div className="overflow-x-auto">
                 <table className={tbl.table}>
                   <thead>
@@ -1540,10 +1488,6 @@ function MarketSizingPanel() {
           </tbody>
         </table>
       </div>
-      <p className="mt-4 border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
-        TAM = ICP-aangrenzende NL zorg; SAM = kern-ICP (VVT-stichtingen 800–15K medew., ≈€1M ARR elk); SOM = realistische
-        3-jaars capture. Hover a row for its definition.
-      </p>
     </Panel>
   )
 }
@@ -1593,7 +1537,7 @@ function KernIcpPenetrationPanel({ funnel, years }: { funnel: WorkbookFunnel; ye
               strokeDasharray="5 4"
               label={{ value: `SOM target ${SOM_TARGET_ACCOUNTS}`, position: 'insideTopRight', fill: C.warm, fontSize: 10 }}
             />
-            <Bar dataKey="cumulative" name="Cumulative new accounts" fill={C.accent} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="cumulative" name="Cumulative new accounts" fill={SEMANTIC.pos} radius={[2, 2, 0, 0]} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -1637,16 +1581,20 @@ function PeopleArea({
 }) {
   const last = years.length - 1
   const entityBars = PEOPLE_ENTITIES.map((e) => ({ key: e.key, name: e.label, color: e.color }))
+  // Cost charts (personnel + overhead) are COSTS — colour their per-entity series with the
+  // red ramp (Meevynd / Naerby / Holding) instead of the categorical entity colours. FTE
+  // (headcount, not a cost) keeps the categorical `entityBars`.
+  const costEntityBars = PEOPLE_ENTITIES.map((e, i) => ({
+    key: e.key,
+    name: e.label,
+    color: SEMANTIC.cost[i],
+  }))
 
   return (
     <section className="space-y-6">
       {/* ── 1) WHERE THE HEADS ARE — FTE by entity over the years + total-FTE KPIs ── */}
       <div>
         <h2 className="text-base font-semibold text-suite-ink">Where the heads are</h2>
-        <p className="mt-0.5 text-xs text-suite-ink-3">
-          FTE by entity over 2027–2030 (roster proxy — months active / 12, split by each role’s entity allocation), and
-          how headcount grows.
-        </p>
       </div>
 
       <KpiStrip>
@@ -1656,7 +1604,7 @@ function PeopleArea({
       </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="FTE by entity" subtitle="Stacked headcount per BV — where the people sit and how they grow.">
+        <Panel title="FTE by entity">
           {fteEnt ? (
             <StackedBarsChart
               data={yearRows(years, { meevynd: fteEnt.meevynd, naerby: fteEnt.naerby, holding: fteEnt.holding })}
@@ -1670,7 +1618,7 @@ function PeopleArea({
           )}
         </Panel>
 
-        <Panel title="Revenue per FTE" subtitle="Live group revenue ÷ total FTE — operating leverage as you grow.">
+        <Panel title="Revenue per FTE">
           <LinesChart
             data={yearRows(years, { rpf: revPerFte })}
             xKey="year"
@@ -1684,17 +1632,10 @@ function PeopleArea({
       {/* ── 2) WHERE THE COSTS SIT — personnel by entity + overhead by entity ── */}
       <div className="pt-1">
         <h2 className="text-base font-semibold text-suite-ink">Where the costs sit</h2>
-        <p className="mt-0.5 text-xs text-suite-ink-3">
-          Personnel cost (live — reflects any re-allocation below) and overhead (indirecte kosten) by entity. These are
-          the fixed costs that rise as the business grows.
-        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Personnel cost by entity"
-          subtitle="Loaded personnel cost per BV — re-allocating a role below shifts cost between these bars (group total unchanged)."
-        >
+        <Panel title="Personnel cost by entity">
           {personnelEnt ? (
             <>
               <StackedBarsChart
@@ -1704,7 +1645,7 @@ function PeopleArea({
                   holding: personnelEnt.holding,
                 })}
                 xKey="year"
-                bars={entityBars}
+                bars={costEntityBars}
                 valueFmt="eur-m"
                 height={300}
               />
@@ -1725,10 +1666,7 @@ function PeopleArea({
           )}
         </Panel>
 
-        <Panel
-          title="Overhead by entity"
-          subtitle="Indirecte kosten per BV over 2027–2030 — what rises with growth beyond people and COGS."
-        >
+        <Panel title="Overhead by entity">
           {indirecte &&
           (indirecte.meevynd.some((v) => v) || indirecte.naerby.some((v) => v) || indirecte.holding.some((v) => v)) ? (
             <StackedBarsChart
@@ -1738,7 +1676,7 @@ function PeopleArea({
                 holding: indirecte.holding,
               })}
               xKey="year"
-              bars={entityBars}
+              bars={costEntityBars}
               valueFmt="eur-m"
               height={300}
             />
@@ -1804,11 +1742,6 @@ function RosterTable({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-suite-ink-2">
-        Re-allocating a role’s entity split shifts its cost between entities — the group total is unchanged — and flows
-        into the Costs &amp; P&amp;L EBIT. Salary, social charges and active months come from the workbook and stay
-        fixed. Values are %.
-      </p>
       <div className="overflow-x-auto">
         <table className={tbl.table}>
           <thead>
@@ -2058,13 +1991,10 @@ function SavedScenarioComparison({
 // All values come from the LIVE `costs`, so the whole area recomputes with the inputs. ---
 
 const COST_COLORS = {
-  cogs: CAT[6], // muted slate — cost of goods
-  opex: CAT[2], // amber — operating costs
-  ebit: C.accent, // teal — profit on top
+  cogs: SEMANTIC.cost[0], // deep red — cost of goods
+  opex: SEMANTIC.cost[1], // lighter red — operating costs
+  ebit: SEMANTIC.profit, // green — profit on top
 } as const
-
-const LIVE_NOTE =
-  'Live — recomputed from your inputs via the sheet’s margins; export writes it back for Google’s exact recompute.'
 
 // The three consolidated operating entities and the one-line story for each.
 const ENTITY_STORY: {
@@ -2121,18 +2051,12 @@ function CostsArea({
       ebitLine: ebit,
     }
   })
-  const groupHasLoss = years.some((_, i) => (g.ebit[i] ?? 0) < 0)
 
   return (
     <section className="space-y-6">
       {/* ── 1) GROUP — where the revenue goes (the key view) ── */}
       <div>
         <h2 className="text-base font-semibold text-suite-ink">Where the group’s revenue goes</h2>
-        <p className="mt-0.5 text-xs text-suite-ink-3">
-          Each bar is that year’s group revenue, split into COGS, operating costs and the EBIT that drops out on top.
-          {' '}
-          {LIVE_NOTE}
-        </p>
       </div>
 
       <KpiStrip>
@@ -2146,24 +2070,13 @@ function CostsArea({
         <Kpi label="Gross margin" value={fmtPct(groupGrossMargin2030)} sub="brutomarge / revenue" />
       </KpiStrip>
 
-      <Panel
-        title="Group revenue → COGS · operating costs · EBIT"
-        subtitle="Bar height = revenue; the teal cap is profit. EBIT is also drawn as a line so a loss year reads through."
-      >
+      <Panel title="Group revenue → COGS · operating costs · EBIT">
         <CompositionChart data={compRows} />
-        {groupHasLoss && (
-          <p className="mt-4 border-t border-suite-border pt-3 text-xs text-suite-ink-2">
-            A year with no teal cap is an EBIT loss — costs exceed revenue; follow the EBIT line below the axis.
-          </p>
-        )}
       </Panel>
 
       {/* ── 2) BY ENTITY — where the profit comes from (small multiples) ── */}
       <div className="pt-1">
         <h2 className="text-base font-semibold text-suite-ink">Where the profit comes from</h2>
-        <p className="mt-0.5 text-xs text-suite-ink-3">
-          EBIT by year for each BV. Negative years are shown in red. Together they roll up to the group above.
-        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -2231,8 +2144,8 @@ function EntityFig({ label, value, tone }: { label: string; value: string; tone?
   )
 }
 
-// EBIT-by-year mini bar chart. Positive bars teal, negative bars terracotta (via pos()'s
-// palette), with a zero baseline so the sign reads at a glance.
+// EBIT-by-year mini bar chart. Positive bars green, negative bars red (semantic pos/neg),
+// with a zero baseline so the sign reads at a glance.
 function EntityEbitMini({ ebit, years }: { ebit: number[]; years: number[] }) {
   const data = years.map((y, i) => ({ year: String(y), ebit: ebit[i] ?? 0 }))
   return (
@@ -2244,7 +2157,7 @@ function EntityEbitMini({ ebit, years }: { ebit: number[]; years: number[] }) {
           <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
           <Bar dataKey="ebit" name="EBIT" radius={[2, 2, 0, 0]} isAnimationActive={false}>
             {data.map((d, i) => (
-              <Cell key={i} fill={d.ebit >= 0 ? C.pos : C.neg} />
+              <Cell key={i} fill={d.ebit >= 0 ? SEMANTIC.pos : SEMANTIC.neg} />
             ))}
           </Bar>
         </ComposedChart>
@@ -2286,10 +2199,6 @@ function PnlTable({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <Segmented<EntityKey> options={options.map((o) => ({ value: o.value, label: o.label }))} value={sel} onChange={setSel} />
-        <p className="text-xs text-suite-ink-3">
-          {ENTITY_BLURB[entity.name] ??
-            'Meevynd = Tech BV · Naerby = Innovatie BV · Holding = Business Support · Groep = consolidated.'}
-        </p>
       </div>
       <div className="overflow-x-auto">
         <table className={tbl.table}>
@@ -2323,9 +2232,6 @@ function PnlTable({
           </tbody>
         </table>
       </div>
-      <p className="border-t border-suite-border pt-3 text-[11px] text-suite-ink-3">
-        Live preview — on export, Google recomputes the full P&L (incl. EBITDA, taxes, net) from your input cells.
-      </p>
     </div>
   )
 }
@@ -2380,7 +2286,7 @@ function CompositionChart({
             type="monotone"
             dataKey="ebitLine"
             name="EBIT (actual)"
-            stroke={C.accentDark}
+            stroke={SEMANTIC.profit}
             strokeWidth={2.5}
             dot={{ r: 2 }}
             isAnimationActive={false}

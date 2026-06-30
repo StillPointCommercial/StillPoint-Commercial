@@ -61,6 +61,20 @@ export const CAT = [
 /** Cycling palette used by mix doughnut / stacked product areas. Aliased to CAT. */
 export const PALETTE = CAT
 
+/**
+ * Semantic colour scheme shared across the Business Case Model charts so meaning
+ * reads consistently everywhere: costs are red, profit/EBIT is green, and new
+ * business vs expansion are two clearly-distinct greens.
+ */
+export const SEMANTIC = {
+  cost: ['#b03a2e', '#d4694f', '#e08a73', '#efb4a4'], // cost ramp: COGS -> overhead (deep -> light red)
+  profit: '#2f9e44',  // EBIT / profit (green)
+  newBiz: '#2f9e44',  // new business / new logos (green)
+  expand: '#74c69d',  // cross-sell / expansion (distinct lighter green)
+  pos: '#2f9e44',     // positive value
+  neg: '#c0392b',     // negative value / loss
+} as const
+
 const axisTick = { fill: C.ink3, fontSize: 11 } as const
 
 function tickM(v: number): string {
