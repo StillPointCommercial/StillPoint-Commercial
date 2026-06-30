@@ -16,13 +16,16 @@ export function extractSpreadsheetId(url: string): string | null {
 
 /** Read the Google API error message from a non-ok response body (best effort). */
 async function googleError(res: Response): Promise<string> {
+  let detail = ''
   try {
-    const body = (await res.json()) as { error?: { message?: string } }
-    if (body?.error?.message) return body.error.message
+    const body = (await res.json()) as { error?: { message?: string; status?: string } }
+    detail = body?.error ? `${body.error.message ?? ''} [${body.error.status ?? ''}]` : JSON.stringify(body)
   } catch {
-    // fall through
+    detail = await res.text().catch(() => '')
   }
-  return `Google Sheets API error (${res.status})`
+  const msg = `Google Sheets API ${res.status}: ${detail}`.slice(0, 400)
+  console.error('[google/sheets]', msg)
+  return msg
 }
 
 export interface SpreadsheetMeta {
@@ -63,7 +66,7 @@ export async function readSheetValues(
   const res = await fetch(
     `${SHEETS_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(
       range,
-    )}?majorDimension=ROWS`,
+    )}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -72,8 +75,8 @@ export async function readSheetValues(
     },
   )
   if (!res.ok) throw new Error(await googleError(res))
-  const json = (await res.json()) as { values?: string[][] }
-  return json.values ?? []
+  const json = (await res.json()) as { values?: (string | number | boolean)[][] }
+  return (json.values ?? []).map((row) => row.map((c) => (c == null ? '' : String(c))))
 }
 
 export interface SheetTab {
@@ -127,4 +130,70 @@ export async function createSpreadsheet(
     spreadsheetId,
     url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
   }
+}
+
+/** Read several ranges at once. Returns a map keyed by the requested range string. */
+export async function readRanges(
+  accessToken: string,
+  spreadsheetId: string,
+  ranges: string[],
+): Promise<Record<string, string[][]>> {
+  if (ranges.length === 0) return {}
+  const qs = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
+  const res = await fetch(
+    `${SHEETS_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchGet?${qs}&majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    },
+  )
+  if (!res.ok) throw new Error(await googleError(res))
+  // UNFORMATTED_VALUE so numbers arrive as raw numbers (300000), not locale-formatted
+  // strings like "300.000" that a "."-as-decimal parser would misread as 300.
+  const json = (await res.json()) as { valueRanges?: { values?: (string | number | boolean)[][] }[] }
+  const out: Record<string, string[][]> = {}
+  ;(json.valueRanges ?? []).forEach((vr, i) => {
+    out[ranges[i]] = (vr.values ?? []).map((row) => row.map((c) => (c == null ? '' : String(c))))
+  })
+  return out
+}
+
+/**
+ * Write values into specific ranges of an EXISTING spreadsheet. Only the given
+ * (input) cells change; every formula elsewhere is left untouched and Google
+ * recalculates the whole model. USER_ENTERED so "=..." strings stay formulas.
+ */
+export async function writeRanges(
+  accessToken: string,
+  spreadsheetId: string,
+  data: { range: string; values: (string | number)[][] }[],
+): Promise<void> {
+  if (data.length === 0) return
+  const res = await fetch(
+    `${SHEETS_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+    },
+  )
+  if (!res.ok) throw new Error(await googleError(res))
+}
+
+/** Add a tab to an existing spreadsheet if it is not already present (e.g. the Funnel tab). */
+export async function ensureSheetTab(
+  accessToken: string,
+  spreadsheetId: string,
+  title: string,
+): Promise<void> {
+  const meta = await getSpreadsheetMeta(accessToken, spreadsheetId)
+  if (meta.sheetTitles.includes(title)) return
+  const res = await fetch(
+    `${SHEETS_BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+    },
+  )
+  if (!res.ok) throw new Error(await googleError(res))
 }

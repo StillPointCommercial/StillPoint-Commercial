@@ -36,7 +36,7 @@ export default async function LauncherPage() {
     <div className="min-h-screen bg-suite-bg font-suite text-suite-ink">
       <SuiteHeader user={{ name, role: profile.role, initials: initialsOf(name) }} />
 
-      <main className="mx-auto max-w-[1600px] px-6 py-12">
+      <main className="mx-auto w-full max-w-[2400px] px-6 lg:px-10 py-12">
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-suite-ink-3">Stillpoint Suite</p>
         <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-suite-ink">Your tools</h1>
         <p className="mt-1.5 text-suite-ink-2">

@@ -75,4 +75,12 @@ describe('BCM model', () => {
     const c = compute(ADAPTA, presetByKey('mid')!.params)
     expect(Math.abs(c.deltaVsPlan2030)).toBeLessThan(2_000_000)
   })
+
+  it('churn translates into lost existing accounts (0 at default, >0 when dialled up)', () => {
+    const p = presetByKey('mid')!.params
+    expect(compute(ADAPTA, p).accountsLost2030).toBe(0)
+    const churned = compute(ADAPTA, { ...p, baselineChurn: 10 })
+    expect(churned.accountsLost2030).toBeGreaterThan(0)
+    expect(churned.accountsLost2030).toBeLessThan(p.bestaande)
+  })
 })

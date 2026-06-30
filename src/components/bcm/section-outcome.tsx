@@ -64,7 +64,14 @@ export function SectionOutcome({
             <Slider label="Existing accounts" value={params.bestaande} min={0} max={60} step={1} onChange={(v) => set('bestaande', v)} format={(n) => String(n)} />
             <Slider label="Baseline revenue" value={params.baseline} min={0} max={20000000} step={100000} onChange={(v) => set('baseline', v)} format={(n) => fmtEur(n)} />
             <Slider label="Baseline churn / yr" value={params.baselineChurn} min={0} max={25} step={1} onChange={(v) => set('baselineChurn', v)} format={(n) => `${n}%`} />
-            <SliderGroupNote>Baseline is the recurring book of business the new motion builds on top of; the existing book erodes at the churn rate each year.</SliderGroupNote>
+            <SliderGroupNote>Baseline is the recurring book the new motion builds on. Churn here means existing customers leaving: it removes their recurring revenue and counts as lost accounts below.</SliderGroupNote>
+            {params.baselineChurn > 0 && (
+              <p className="mt-3 rounded-lg border border-suite-border px-3 py-2 text-xs text-suite-ink-2">
+                At {params.baselineChurn}%/yr,{' '}
+                <span className="font-semibold text-suite-ink">{fmtNumR(c.accountsLost2030)} of {params.bestaande}</span>{' '}
+                existing accounts churn out by 2030.
+              </p>
+            )}
           </div>
         }
       >

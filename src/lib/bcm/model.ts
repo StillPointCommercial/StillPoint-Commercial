@@ -65,6 +65,9 @@ export function compute(ds: Dataset, p: Params): Computed {
   const newTotal = newLogoRev.map((v, i) => v + crossUp[i] + innov[i])
   const base = years.map((_, y) => p.baseline * Math.pow(1 - p.baselineChurn / 100, y))
   const totalRevenue = newTotal.map((v, i) => v + base[i])
+  // churn modelled as existing customers leaving: cumulative accounts lost by each year
+  const accountsLost = years.map((_, y) => p.bestaande * (1 - Math.pow(1 - p.baselineChurn / 100, y)))
+  const accountsLost2030 = accountsLost[accountsLost.length - 1]
 
   // current-forecast reference (uses the dataset's own new_business motion)
   const forecastNewBusiness = ds.motion.new_business
@@ -156,5 +159,6 @@ export function compute(ds: Dataset, p: Params): Computed {
     gtmCost, grossContribution, netContribution, cumulativeCash,
     paybackYear, paybackMonths, roi, totalGtmCost, totalContribution, netByEnd,
     leadCapacityPerYear, leadGapPerYear, leadCoverage,
+    accountsLost, accountsLost2030,
   }
 }

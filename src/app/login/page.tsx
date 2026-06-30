@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // Requested at sign-in so the Business Case Model can read/write Google Sheets.
+// `drive` (full) is needed to natively COPY a shared sheet the app did not create,
+// so the original stays untouched. Can be tightened to drive.file + Picker before
+// onboarding external clients.
 const GOOGLE_SCOPES =
-  'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file'
+  'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)

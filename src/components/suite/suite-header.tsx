@@ -30,7 +30,7 @@ export function SuiteHeader({
 
   return (
     <header className="sticky top-0 z-30 border-b border-suite-border bg-suite-bg/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-6">
+      <div className="mx-auto flex h-14 w-full max-w-[2400px] items-center justify-between px-6 lg:px-10">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
             <span className="grid h-6 w-6 place-items-center rounded-md bg-suite-slate text-[11px] font-semibold text-white">

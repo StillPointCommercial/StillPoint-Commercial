@@ -126,4 +126,7 @@ export interface Computed {
   leadCapacityPerYear: number[]
   leadGapPerYear: number[]
   leadCoverage: number
+  // existing-book churn -> lost accounts
+  accountsLost: number[]
+  accountsLost2030: number
 }
