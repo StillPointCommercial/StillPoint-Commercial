@@ -36,6 +36,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
+  Undo2,
+  RotateCcw,
 } from 'lucide-react'
 import { Panel, Kpi, KpiStrip, Segmented, Slider, tbl, cx, pos } from '@/components/suite/ui'
 import { fmtEur, fmtM, fmtNum, fmtPct, fmtSignedM } from '@/lib/bcm/format'
@@ -341,6 +343,9 @@ function Foldout({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
+// Deep-clone an inputs snapshot so rollback baselines never alias the live object.
+const cloneInputs = (i: WorkbookInputs): WorkbookInputs => JSON.parse(JSON.stringify(i)) as WorkbookInputs
+
 export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId: string | null }) {
   const [phase, setPhase] = useState<Phase>('empty')
   const [url, setUrl] = useState('')
@@ -360,6 +365,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
   const [working, setWorking] = useState<Working | null>(null)
   const [inputs, setInputs] = useState<WorkbookInputs | null>(null)
+  // Rollback baselines: the pristine state from import/load, and the last persisted
+  // state. Only `inputs` changes as you edit (the cost baseline lives in `working`),
+  // so restoring an inputs snapshot is a complete rollback.
+  const [importedInputs, setImportedInputs] = useState<WorkbookInputs | null>(null)
+  const [savePoint, setSavePoint] = useState<WorkbookInputs | null>(null)
 
   // Active area. The compact header + KPI strip stay above this; only the active area
   // renders below the area nav.
@@ -408,6 +418,17 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   const scenario = useMemo(
     () => (working ? parseScenarioPaths(working.blocks.scenarioPaths) : null),
     [working],
+  )
+
+  // Has the live model diverged from the last save / from the import? Drives the
+  // Roll back / Reset buttons and the "Modified" badge.
+  const dirtySinceSave = useMemo(
+    () => !!(inputs && savePoint) && JSON.stringify(inputs) !== JSON.stringify(savePoint),
+    [inputs, savePoint],
+  )
+  const changedSinceImport = useMemo(
+    () => !!(inputs && importedInputs) && JSON.stringify(inputs) !== JSON.stringify(importedInputs),
+    [inputs, importedInputs],
   )
 
   // Load the saved scenario list once an account is known. Re-runs when the workspace
@@ -495,6 +516,8 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         ),
       )
       setInputs(nextInputs)
+      setImportedInputs(cloneInputs(nextInputs))
+      setSavePoint(cloneInputs(nextInputs))
       setActiveId(null)
       setName('')
       setEditingName(false)
@@ -527,6 +550,8 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       ),
     )
     setInputs(nextInputs)
+    setImportedInputs(cloneInputs(nextInputs))
+    setSavePoint(cloneInputs(nextInputs))
     setActiveId(row.id)
     setName(row.name)
     setEditingName(false)
@@ -600,6 +625,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         setActiveId(created.id)
         setName(created.name)
       }
+      setSavePoint(cloneInputs(inputs))
       setExportNote(json.url)
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`)
@@ -632,6 +658,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       }
       await updateWorkbookScenario(activeId, { inputs, blocks: working.blocks })
       await refreshScenarios()
+      setSavePoint(cloneInputs(inputs))
       setExportNote(json.url)
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`)
@@ -653,6 +680,19 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     } catch (err) {
       setError(`Delete failed: ${err instanceof Error ? err.message : 'unknown error'}`)
     }
+  }
+
+  // ROLL BACK to the last saved state (= the import baseline until the first save).
+  function rollbackToSave() {
+    if (!savePoint || !dirtySinceSave) return
+    if (!window.confirm('Discard changes since your last save?')) return
+    setInputs(cloneInputs(savePoint))
+  }
+  // RESET every input back to the originally imported values.
+  function resetToImport() {
+    if (!importedInputs || !changedSinceImport) return
+    if (!window.confirm('Reset all inputs to the imported original? This discards your changes.')) return
+    setInputs(cloneInputs(importedInputs))
   }
 
   // --- EMPTY / LOADING / ERROR: the import panel + (if any) the saved scenarios ---
@@ -872,6 +912,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
         {/* Scenario controls: Save / Save as new + a compact switcher + new import */}
         <div className="flex flex-wrap items-center gap-2">
+          {activeId && dirtySinceSave && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              Modified
+            </span>
+          )}
           {activeId && (
             <button
               onClick={handleSave}
@@ -889,6 +934,25 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           >
             {savingAs ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
             {savingAs ? 'Saving…' : 'Save as new'}
+          </button>
+
+          <button
+            onClick={rollbackToSave}
+            disabled={!dirtySinceSave}
+            title="Discard changes since your last save"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-3 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Undo2 size={13} />
+            Roll back
+          </button>
+          <button
+            onClick={resetToImport}
+            disabled={!changedSinceImport}
+            title="Reset all inputs to the imported original"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-3 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCcw size={13} />
+            Reset to import
           </button>
 
           <ScenarioSwitcher
