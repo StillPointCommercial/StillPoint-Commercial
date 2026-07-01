@@ -41,9 +41,11 @@ export function SuiteHeader({
             </span>
           </Link>
           {title && <span className="text-sm font-medium text-suite-ink">{title}</span>}
+          <div id="suite-header-center" className="flex min-w-0 items-center" />
         </div>
 
         <div className="flex items-center gap-4">
+          <div id="suite-header-actions" className="flex items-center gap-2" />
           <div className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-full bg-suite-panel text-xs font-semibold text-suite-ink-2">
               {user.initials}

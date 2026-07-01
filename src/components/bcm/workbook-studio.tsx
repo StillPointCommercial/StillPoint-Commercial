@@ -8,6 +8,7 @@
 // copy; the source is never touched. On export Google recalculates the full P&L from
 // our input cells; the live EBIT here is the app-side preview of that recompute.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -383,6 +384,14 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // list of stream names; the value/growth/count inputs appear only when unfolded.
   const [revStreamOpen, setRevStreamOpen] = useState<Record<string, boolean>>({})
   const [revMixOpen, setRevMixOpen] = useState(false)
+
+  // Portal targets in the top SuiteHeader bar (scenario identity -> center, controls -> actions).
+  const [headerCenterEl, setHeaderCenterEl] = useState<HTMLElement | null>(null)
+  const [headerActionsEl, setHeaderActionsEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setHeaderCenterEl(document.getElementById('suite-header-center'))
+    setHeaderActionsEl(document.getElementById('suite-header-actions'))
+  }, [])
 
   // --- live recompute + read-only block parsing ---
   const revenue = useMemo(() => (inputs ? computeWorkbookRevenue(inputs) : null), [inputs])
@@ -849,127 +858,133 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
   const revPerFte = revenue.years.map((_, i) => (fte[i] > 0 ? (liveTotal[i] ?? 0) / fte[i] : 0))
 
+  // Scenario identity for the top-bar center slot (imported file name + editable scenario name + badge).
+  const headerIdentity = (
+    <div className="flex min-w-0 items-center gap-2 border-l border-suite-border pl-3">
+      <span className="hidden max-w-[13rem] shrink-0 truncate text-xs text-suite-ink-3 xl:inline" title={working.title}>
+        {working.title}
+      </span>
+      {activeId ? (
+        editingName ? (
+          <input
+            autoFocus
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') {
+                setName(working.title)
+                setEditingName(false)
+              }
+            }}
+            className="min-w-0 max-w-[15rem] rounded-md border border-suite-accent bg-suite-bg px-2 py-0.5 text-sm font-semibold text-suite-ink focus:outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setName(working.title)
+              setEditingName(true)
+            }}
+            title="Rename scenario"
+            className="group inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-suite-ink"
+          >
+            <span className="max-w-[15rem] truncate">{working.title}</span>
+            <Pencil size={12} className="shrink-0 text-suite-ink-3 opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+        )
+      ) : (
+        <>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name this draft"
+            className="min-w-0 max-w-[13rem] rounded-md border border-suite-border bg-suite-bg px-2 py-0.5 text-sm font-semibold text-suite-ink placeholder:font-normal placeholder:text-suite-ink-3 focus:border-suite-accent focus:outline-none"
+          />
+          <span className="hidden shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 sm:inline">
+            Unsaved draft
+          </span>
+        </>
+      )}
+      {working.copyUrl && (
+        <a
+          href={working.copyUrl}
+          target="_blank"
+          rel="noreferrer"
+          title="Open this scenario's Sheet copy"
+          className="shrink-0 text-suite-accent hover:text-suite-ink"
+        >
+          <ExternalLink size={13} />
+        </a>
+      )}
+    </div>
+  )
+
+  // Scenario controls for the top-bar actions slot (icons always; text labels widen in on larger screens).
+  const headerControls = (
+    <div className="flex items-center gap-1.5">
+      {activeId && dirtySinceSave && (
+        <span className="hidden shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 lg:inline-flex">
+          Modified
+        </span>
+      )}
+      {activeId && (
+        <button
+          onClick={handleSave}
+          disabled={saving || !working.copyId || !userId}
+          title="Save"
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-2.5 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+          <span className="hidden lg:inline">{saving ? 'Saving…' : 'Save'}</span>
+        </button>
+      )}
+      <button
+        onClick={handleSaveAsNew}
+        disabled={savingAs || !userId}
+        title="Save as new"
+        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-suite-slate px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-suite-ink disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {savingAs ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
+        <span className="hidden lg:inline">{savingAs ? 'Saving…' : 'Save as new'}</span>
+      </button>
+      <button
+        onClick={rollbackToSave}
+        disabled={!dirtySinceSave}
+        title="Roll back to your last save"
+        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-2.5 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Undo2 size={13} />
+        <span className="hidden xl:inline">Roll back</span>
+      </button>
+      <button
+        onClick={resetToImport}
+        disabled={!changedSinceImport}
+        title="Reset to imported original"
+        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-2.5 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <RotateCcw size={13} />
+        <span className="hidden xl:inline">Reset to import</span>
+      </button>
+      <ScenarioSwitcher
+        scenarios={scenarios}
+        activeId={activeId}
+        open={switcherOpen}
+        setOpen={setSwitcherOpen}
+        onLoad={handleLoad}
+        onDelete={handleDelete}
+        onNewImport={startNewImport}
+      />
+    </div>
+  )
+
   return (
     <div className="space-y-6">
-      {/* ── Compact header: workbook + prominent scenario name + scenario controls ── */}
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0">
-          <p className="truncate text-[11px] uppercase tracking-wide text-suite-ink-3">{working.title}</p>
-          <div className="mt-0.5 flex items-center gap-2">
-            {activeId ? (
-              editingName ? (
-                <input
-                  autoFocus
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitRename()
-                    if (e.key === 'Escape') {
-                      setName(working.title)
-                      setEditingName(false)
-                    }
-                  }}
-                  className="min-w-0 max-w-[20rem] rounded-md border border-suite-accent bg-suite-bg px-2 py-1 text-lg font-semibold text-suite-ink focus:outline-none"
-                />
-              ) : (
-                <button
-                  onClick={() => {
-                    setName(working.title)
-                    setEditingName(true)
-                  }}
-                  title="Rename scenario"
-                  className="group inline-flex items-center gap-1.5 text-lg font-semibold text-suite-ink"
-                >
-                  <span className="truncate">{working.title}</span>
-                  <Pencil size={13} className="shrink-0 text-suite-ink-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                </button>
-              )
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Name this draft (e.g. Midden)"
-                  className="min-w-0 max-w-[18rem] rounded-md border border-suite-border bg-suite-bg px-2 py-1 text-lg font-semibold text-suite-ink placeholder:text-base placeholder:font-normal placeholder:text-suite-ink-3 focus:border-suite-accent focus:outline-none"
-                />
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                  Unsaved draft
-                </span>
-              </>
-            )}
-          </div>
-          {working.copyUrl && (
-            <a
-              href={working.copyUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-xs text-suite-accent hover:underline"
-            >
-              Open this scenario’s Sheet copy
-              <ExternalLink size={12} className="shrink-0" />
-            </a>
-          )}
-        </div>
-
-        {/* Scenario controls: Save / Save as new + a compact switcher + new import */}
-        <div className="flex flex-wrap items-center gap-2">
-          {activeId && dirtySinceSave && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-              Modified
-            </span>
-          )}
-          {activeId && (
-            <button
-              onClick={handleSave}
-              disabled={saving || !working.copyId || !userId}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-3 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          )}
-          <button
-            onClick={handleSaveAsNew}
-            disabled={savingAs || !userId}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-suite-slate px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-suite-ink disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {savingAs ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
-            {savingAs ? 'Saving…' : 'Save as new'}
-          </button>
-
-          <button
-            onClick={rollbackToSave}
-            disabled={!dirtySinceSave}
-            title="Discard changes since your last save"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-3 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Undo2 size={13} />
-            Roll back
-          </button>
-          <button
-            onClick={resetToImport}
-            disabled={!changedSinceImport}
-            title="Reset all inputs to the imported original"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-3 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RotateCcw size={13} />
-            Reset to import
-          </button>
-
-          <ScenarioSwitcher
-            scenarios={scenarios}
-            activeId={activeId}
-            open={switcherOpen}
-            setOpen={setSwitcherOpen}
-            onLoad={handleLoad}
-            onDelete={handleDelete}
-            onNewImport={startNewImport}
-          />
-        </div>
-      </div>
+      {/* Scenario identity + controls are portalled up into the top SuiteHeader bar. */}
+      {headerCenterEl && createPortal(headerIdentity, headerCenterEl)}
+      {headerActionsEl && createPortal(headerControls, headerActionsEl)}
 
       {exportNote && (
         <a
