@@ -40,6 +40,7 @@ export interface ClientCrossSell {
   employees: number | null
   tier: ValueTier
   crossSellOpen: number // # of products still 'Potential' = expansion whitespace on the account
+  whitespaceValue: number // estimated euro still open: (open / applicable products) * tier ARR
   note: string
 }
 
@@ -57,24 +58,24 @@ export const PROSPECTS: Prospect[] = [
 
 /** Current clients + how many products are still open to cross-sell (expansion whitespace). */
 export const CURRENT_CLIENTS: ClientCrossSell[] = [
-  { name: 'BrabantZorg', employees: 6000, tier: 'groot', crossSellOpen: 3, note: '' },
-  { name: 'Buurtzorg', employees: 14500, tier: 'groot', crossSellOpen: 2, note: '' },
-  { name: 'De Betuwe', employees: 1200, tier: 'klein', crossSellOpen: 2, note: '' },
-  { name: 'Prisma', employees: 3000, tier: 'midden', crossSellOpen: 3, note: '' },
-  { name: 'ZuidZorg', employees: 3000, tier: 'midden', crossSellOpen: 6, note: '' },
-  { name: 'Lister', employees: 1200, tier: 'midden', crossSellOpen: 4, note: '' },
-  { name: 'Thuiszorg West-Brabant', employees: 2200, tier: 'midden', crossSellOpen: 6, note: 'Vaker om tafel gezeten, weinig concreet; doen veel zelf.' },
-  { name: 'FysioHolland', employees: 550, tier: 'klein', crossSellOpen: 3, note: '' },
-  { name: 'Zorgfederatie Oldenzaal', employees: 450, tier: 'klein', crossSellOpen: 4, note: '' },
-  { name: 'Livio', employees: 2200, tier: 'groot', crossSellOpen: 2, note: 'Zitten op Microsoft.' },
-  { name: 'Prodeba', employees: 450, tier: 'seed', crossSellOpen: 6, note: 'Groeit met ~120 mdw per jaar.' },
-  { name: 'Het Vertrouwde Dorp', employees: 51, tier: 'klein', crossSellOpen: 0, note: '' },
-  { name: 'ZuidZorg Wijkzorg', employees: 1200, tier: 'klein', crossSellOpen: 5, note: 'Per 1 mei 2026 alles van Ecare naar ons overgegaan.' },
-  { name: 'Buurtdiensten NL', employees: 4500, tier: 'groot', crossSellOpen: 0, note: 'IAM opschalen in Q2 2026; project loopt.' },
-  { name: 'FysioHolland STTC', employees: 510, tier: 'klein', crossSellOpen: 1, note: '' },
-  { name: 'Phlox', employees: 50, tier: 'seed', crossSellOpen: 3, note: '' },
-  { name: 'Health4You', employees: 4, tier: 'seed', crossSellOpen: 0, note: 'Te kleine organisatie, groeit niet.' },
-  { name: 'Leading Aesthetics', employees: 20, tier: 'seed', crossSellOpen: 0, note: 'Koos voor Microsoft; aflopend Google-account.' },
+  { name: 'BrabantZorg', employees: 6000, tier: 'groot', crossSellOpen: 3, whitespaceValue: 409_000, note: '' },
+  { name: 'Buurtzorg', employees: 14500, tier: 'groot', crossSellOpen: 2, whitespaceValue: 273_000, note: '' },
+  { name: 'De Betuwe', employees: 1200, tier: 'klein', crossSellOpen: 2, whitespaceValue: 100_000, note: '' },
+  { name: 'Prisma', employees: 3000, tier: 'midden', crossSellOpen: 3, whitespaceValue: 500_000, note: '' },
+  { name: 'ZuidZorg', employees: 3000, tier: 'midden', crossSellOpen: 6, whitespaceValue: 600_000, note: '' },
+  { name: 'Lister', employees: 1200, tier: 'midden', crossSellOpen: 4, whitespaceValue: 667_000, note: '' },
+  { name: 'Thuiszorg West-Brabant', employees: 2200, tier: 'midden', crossSellOpen: 6, whitespaceValue: 750_000, note: 'Vaker om tafel gezeten, weinig concreet; doen veel zelf.' },
+  { name: 'FysioHolland', employees: 550, tier: 'klein', crossSellOpen: 3, whitespaceValue: 250_000, note: '' },
+  { name: 'Zorgfederatie Oldenzaal', employees: 450, tier: 'klein', crossSellOpen: 4, whitespaceValue: 250_000, note: '' },
+  { name: 'Livio', employees: 2200, tier: 'groot', crossSellOpen: 2, whitespaceValue: 1_000_000, note: 'Zitten op Microsoft.' },
+  { name: 'Prodeba', employees: 450, tier: 'seed', crossSellOpen: 6, whitespaceValue: 214_000, note: 'Groeit met ~120 mdw per jaar.' },
+  { name: 'Het Vertrouwde Dorp', employees: 51, tier: 'klein', crossSellOpen: 0, whitespaceValue: 0, note: '' },
+  { name: 'ZuidZorg Wijkzorg', employees: 1200, tier: 'klein', crossSellOpen: 5, whitespaceValue: 278_000, note: 'Per 1 mei 2026 alles van Ecare naar ons overgegaan.' },
+  { name: 'Buurtdiensten NL', employees: 4500, tier: 'groot', crossSellOpen: 0, whitespaceValue: 0, note: 'IAM opschalen in Q2 2026; project loopt.' },
+  { name: 'FysioHolland STTC', employees: 510, tier: 'klein', crossSellOpen: 1, whitespaceValue: 100_000, note: '' },
+  { name: 'Phlox', employees: 50, tier: 'seed', crossSellOpen: 3, whitespaceValue: 125_000, note: '' },
+  { name: 'Health4You', employees: 4, tier: 'seed', crossSellOpen: 0, whitespaceValue: 0, note: 'Te kleine organisatie, groeit niet.' },
+  { name: 'Leading Aesthetics', employees: 20, tier: 'seed', crossSellOpen: 0, whitespaceValue: 0, note: 'Koos voor Microsoft; aflopend Google-account.' },
 ]
 
 // Microsoft suspects: orgs surfaced via the MS365-onderzoek + outreach. Earlier stage than the
@@ -120,6 +121,7 @@ export interface MarketCoverage {
   undiscovered: number // kern - identified: white space not yet on the radar
   identifiedArr: number // modeled ARR of the active prospect pipeline
   crossSellOpenTotal: number // total open product slots across current clients
+  crossSellValueTotal: number // estimated euro of open cross-sell across current clients
 }
 
 /** Coverage of the kern-ICP: how much is won / identified vs still-undiscovered white space. */
@@ -138,5 +140,6 @@ export function marketCoverage(): MarketCoverage {
     undiscovered: Math.max(0, KERN_ICP_ORGS - identified),
     identifiedArr: active.reduce((s, p) => s + TIER_ARR[p.tier], 0),
     crossSellOpenTotal: CURRENT_CLIENTS.reduce((s, c) => s + c.crossSellOpen, 0),
+    crossSellValueTotal: CURRENT_CLIENTS.reduce((s, c) => s + c.whitespaceValue, 0),
   }
 }

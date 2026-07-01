@@ -1898,7 +1898,7 @@ function PipelineWhiteSpacePanel() {
     return TIER_ARR[b.tier] - TIER_ARR[a.tier]
   })
   // Current clients: most open cross-sell slots first.
-  const clientsSorted = [...CURRENT_CLIENTS].sort((a, b) => b.crossSellOpen - a.crossSellOpen)
+  const clientsSorted = [...CURRENT_CLIENTS].sort((a, b) => b.whitespaceValue - a.whitespaceValue)
   const coverageBar: Datum[] = [
     { label: 'Kern-ICP (220)', identified: cov.identified, undiscovered: cov.undiscovered },
   ]
@@ -1917,6 +1917,7 @@ function PipelineWhiteSpacePanel() {
               <MiniStat label="Microsoft suspects" value={fmtNum(cov.msSuspects)} sub="MS365-onderzoek" />
               <MiniStat label="Identified total" value={fmtNum(cov.identified)} sub={`of ${fmtNum(cov.kernOrgs)} kern orgs`} />
               <MiniStat label="Undiscovered white space" value={fmtNum(cov.undiscovered)} sub={`+ ${fmtM(cov.identifiedArr)} active pipeline ARR`} />
+              <MiniStat label="Open cross-sell (est.)" value={fmtM(cov.crossSellValueTotal)} sub={`${fmtNum(cov.crossSellOpenTotal)} open products in the base`} />
             </div>
             <div>
               <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">Coverage of the 220 kern orgs</p>
@@ -1945,7 +1946,7 @@ function PipelineWhiteSpacePanel() {
                     <th className={tbl.th}>Name</th>
                     <th className={tbl.th}>Tier</th>
                     <th className={tbl.thR}>Employees</th>
-                    <th className={tbl.thR}>Modeled ARR</th>
+                    <th className={tbl.thR}>ARPU / account</th>
                     <th className={tbl.th}>Priority</th>
                     <th className={tbl.th}>Current partner</th>
                   </tr>
@@ -2008,7 +2009,9 @@ function PipelineWhiteSpacePanel() {
                     <th className={tbl.th}>Name</th>
                     <th className={tbl.thR}>Employees</th>
                     <th className={tbl.th}>Tier</th>
+                    <th className={tbl.thR}>ARPU / account</th>
                     <th className={tbl.thR}>Cross-sell open</th>
+                    <th className={tbl.thR}>Open whitespace (est.)</th>
                     <th className={tbl.th}>Note</th>
                   </tr>
                 </thead>
@@ -2018,8 +2021,10 @@ function PipelineWhiteSpacePanel() {
                       <td className={cx(tbl.td, 'font-medium')}>{c.name}</td>
                       <td className={tbl.tdR}>{c.employees == null ? '·' : fmtNum(c.employees)}</td>
                       <td className={tbl.td}>{TIER_LABEL[c.tier]}</td>
+                      <td className={tbl.tdR}>{fmtM(TIER_ARR[c.tier])}</td>
                       <td className={tbl.tdR}>{fmtNum(c.crossSellOpen)} products</td>
-                      <td className={cx(tbl.td, 'max-w-[16rem] truncate text-suite-ink-2')} title={c.note}>{c.note || '·'}</td>
+                      <td className={tbl.tdR}>{c.whitespaceValue > 0 ? fmtM(c.whitespaceValue) : '·'}</td>
+                      <td className={cx(tbl.td, 'max-w-[14rem] truncate text-suite-ink-2')} title={c.note}>{c.note || '·'}</td>
                     </tr>
                   ))}
                 </tbody>
