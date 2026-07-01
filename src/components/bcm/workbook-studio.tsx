@@ -2402,6 +2402,8 @@ const costAxisTick = { fill: C.ink3, fontSize: 11 } as const
 const costTooltipStyle = {
   contentStyle: { borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 },
   labelStyle: { color: C.slate, fontWeight: 600 },
+  // Show only the series under the pointer, not every stacked value at that x.
+  shared: false,
 } as const
 // Tooltip styling for the product-mix doughnut (matches the cost charts).
 const mixTooltipStyle = costTooltipStyle

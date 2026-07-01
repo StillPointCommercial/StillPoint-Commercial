@@ -89,6 +89,8 @@ const tooltipStyle = {
     boxShadow: '0 4px 12px rgba(15,23,42,0.06)',
   },
   labelStyle: { color: C.slate, fontWeight: 600 },
+  // Show only the series under the pointer, not every stacked value at that x.
+  shared: false,
 } as const
 
 const legendStyle = { fontSize: 11, paddingTop: 4 } as const
