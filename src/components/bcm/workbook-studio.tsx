@@ -49,6 +49,14 @@ import {
   KERN_ICP_MAX_ARR,
   SOM_TARGET_ACCOUNTS,
 } from '@/lib/bcm/market'
+import {
+  PROSPECTS,
+  CURRENT_CLIENTS,
+  TIER_ARR,
+  TIER_LABEL,
+  isActiveProspect,
+  marketCoverage,
+} from '@/lib/bcm/prospects'
 import { C, CAT, SEMANTIC, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
 import { SectionGrid, yearRows } from './helpers'
 import {
@@ -58,6 +66,8 @@ import {
   computeWorkbookCategoryRevenue,
   computeWorkbookFunnel,
   computeWorkbookCosts,
+  computeWorkbookCogsByCategory,
+  computeWorkbookStreamValue,
   deriveCostContext,
   personnelByEntity,
   fteByEntity,
@@ -67,6 +77,7 @@ import {
   type CrossSellLine,
   type FunnelParams,
   type WorkbookFunnel,
+  type WorkbookRevenue,
   type WorkbookInputs,
   type CostContext,
   type MargesMap,
@@ -1096,8 +1107,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
 
       {/* Revenue & mix: two-pane workspace · compact INPUT sidebar (left) feeds the */}
       {/* ── large VISUALS pane (right); collapse the sidebar for a full-width graph view. ── */}
-      {view === 'revenue' && mixCats && byMotion && catRevenue && (
-        <section className="flex items-start gap-5">
+      {view === 'revenue' && mixCats && byMotion && catRevenue && costs && (
+        <section className="space-y-6">
+        {/* Revenue key metrics · CEO-relevant, from the live revenue / motion / cost model */}
+        <RevenueKpiStrip revenue={revenue} byMotion={byMotion} logos={inputs.logos} costs={costs} />
+        <div className="flex items-start gap-5">
           {/* LEFT: compact, dense control panel · collapses to a thin re-open strip */}
           {revSidebarCollapsed ? (
             <button
@@ -1318,6 +1332,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               })()}
             </Panel>
 
+            {/* 1b · How new accounts scale in value · per-stream cohort ramp (behind a foldout) */}
+            <Foldout label="How new accounts scale in value">
+              <StreamValueRamp inputs={inputs} years={revenue.years} />
+            </Foldout>
+
             {/* 2 · What we're selling: category revenue over time + 2030 mix doughnut */}
             <Panel title="What we're selling">
               <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -1443,6 +1462,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
               </Panel>
             )}
           </div>
+        </div>
         </section>
       )}
 
@@ -1450,11 +1470,20 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       {/* ── existing conversion funnel (sliders + required-activity table + coverage). ── */}
       {view === 'funnel' && funnel && (
         <section className="space-y-6">
+          {/* Funnel key metrics · CEO-relevant, tied to the model's contracts + the funnel math */}
+          <FunnelKpiStrip funnel={funnel} revenue={revenue} logos={inputs.logos} />
+
           {/* Market sizing + the key new insight: kern-ICP penetration from the model. */}
           <div className="grid gap-6 lg:grid-cols-2">
             <MarketSizingPanel />
             <KernIcpPenetrationPanel funnel={funnel} years={revenue.years} />
           </div>
+
+          {/* Identified pipeline vs undiscovered white space (from the marktanalyse). */}
+          <PipelineWhiteSpacePanel />
+
+          {/* New accounts signed per year, one stacked series per logo stream. */}
+          <NewAccountsPerYearPanel logos={inputs.logos} years={revenue.years} funnel={funnel} />
 
           {/* The existing conversion funnel · sliders feed the back-calculated activity table. */}
           <SectionGrid
@@ -1577,7 +1606,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       {/* ── Costs & P&L: group composition + KPIs, entity small-multiples, full P&L folds away ── */}
       {view === 'pnl' &&
         (costs ? (
-          <CostsArea costs={costs} years={revenue.years} />
+          <CostsArea costs={costs} years={revenue.years} inputs={inputs} marges={working.marges} />
         ) : (
           <Panel title="Costs & P&L">
             <p className="text-xs text-suite-ink-3">
@@ -1600,6 +1629,86 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           onPatchPct={(idx, entity, value) => setInputs((p) => (p ? patchRosterPct(p, idx, entity, value) : p))}
         />
       )}
+    </div>
+  )
+}
+
+// --- Revenue & mix helpers: a 5-metric KPI strip + the per-stream value-ramp foldout. ---
+
+// Revenue key-metric strip · five CEO-relevant numbers from the live revenue / motion / cost
+// model. New-logo vs cross-sell split is shown as "new% / cross%"; avg ARR per new account uses
+// that year's NEW-logo revenue over the accounts signed that year.
+function RevenueKpiStrip({
+  revenue,
+  byMotion,
+  logos,
+  costs,
+}: {
+  revenue: WorkbookRevenue
+  byMotion: { newLogos: number[]; crossSell: number[]; total: number[] }
+  logos: LogoStream[]
+  costs: { groep: EntityCosts }
+}) {
+  const last = revenue.years.length - 1
+  const newRev2030 = revenue.totalNew[last] ?? 0
+  const total2030 = byMotion.total[last] ?? 0
+  const newPct = total2030 > 0 ? (byMotion.newLogos[last] ?? 0) / total2030 : 0
+  const crossPct = total2030 > 0 ? (byMotion.crossSell[last] ?? 0) / total2030 : 0
+  const accounts2030 = logos.reduce((s, st) => s + (st.counts[last] ?? 0), 0)
+  const newLogoRev2030 =
+    (revenue.logoOmzet.google[last] ?? 0) + (revenue.logoOmzet.microsoft[last] ?? 0) + (revenue.logoOmzet.puls[last] ?? 0)
+  const avgArr = accounts2030 > 0 ? newLogoRev2030 / accounts2030 : 0
+  const grossMargin2030 = costs.groep.grossMarginPct[last] ?? 0
+  return (
+    <KpiStrip>
+      <Kpi label={`New revenue ${revenue.years[last]}`} value={fmtM(newRev2030)} sub="live from your inputs" accent />
+      <Kpi label={`New-logo vs cross-sell ${revenue.years[last]}`} value={`${fmtPct(newPct, 0)} / ${fmtPct(crossPct, 0)}`} sub="new logos / expansion" />
+      <Kpi label={`New accounts added ${revenue.years[last]}`} value={fmtNum(Math.round(accounts2030))} sub="new logos that year" />
+      <Kpi label={`Avg ARR per new account ${revenue.years[last]}`} value={fmtEur(avgArr)} sub="new-logo rev / accounts" />
+      <Kpi label="Blended gross margin" value={fmtPct(grossMargin2030)} sub={`Groep ${revenue.years[last]}`} />
+    </KpiStrip>
+  )
+}
+
+// Per-stream cohort value ramp: NEW-logo revenue per stream (lines) plus each stream's average
+// value per active account (running-cumulative accounts), from computeWorkbookStreamValue. Lets
+// the user sanity-check where value lands with each stream's per-year growth ramp.
+function StreamValueRamp({ inputs, years }: { inputs: WorkbookInputs; years: number[] }) {
+  const streamValues = computeWorkbookStreamValue(inputs)
+  const revData = yearRows(
+    years,
+    Object.fromEntries(streamValues.map((s) => [`rev_${s.key}`, s.revenue])),
+  )
+  const avgData = yearRows(
+    years,
+    Object.fromEntries(streamValues.map((s) => [`avg_${s.key}`, s.avgPerAccount])),
+  )
+  const revSeries: SeriesDef[] = streamValues.map((s) => ({
+    key: `rev_${s.key}`,
+    name: s.label,
+    color: STREAM_COLORS[s.key] ?? CAT[0],
+  }))
+  const avgSeries: SeriesDef[] = streamValues.map((s) => ({
+    key: `avg_${s.key}`,
+    name: s.label,
+    color: STREAM_COLORS[s.key] ?? CAT[0],
+  }))
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-suite-ink-3">
+        Each new cohort ramps at its stream&apos;s growth rate (e.g. 15% / yr), capped at the per-logo max. Left: new-logo
+        revenue per stream. Right: average value per active account (that year&apos;s revenue over accounts signed to date).
+      </p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">New-logo revenue by stream</p>
+          <LinesChart data={revData} xKey="year" series={revSeries} valueFmt="eur-m" height={260} />
+        </div>
+        <div>
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">Avg value per active account</p>
+          <LinesChart data={avgData} xKey="year" series={avgSeries} valueFmt="eur-m" height={260} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -1701,6 +1810,205 @@ function KernIcpPenetrationPanel({ funnel, years }: { funnel: WorkbookFunnel; ye
   )
 }
 
+// Funnel key-metric strip · five CEO-relevant numbers straight from the model's contracts
+// (new logos per year) and the funnel math. Avg new-account value uses only NEW-logo revenue
+// (all three streams) over that year's accounts, so it reads as "what a fresh logo is worth".
+function FunnelKpiStrip({
+  funnel,
+  revenue,
+  logos,
+}: {
+  funnel: WorkbookFunnel
+  revenue: WorkbookRevenue
+  logos: LogoStream[]
+}) {
+  const last = revenue.years.length - 1
+  const contracts = funnel.stages.find((s) => s.stage === 'Contracts')?.perYear ?? revenue.years.map(() => 0)
+  const leads = funnel.stages.find((s) => s.stage === 'Leads')?.perYear ?? revenue.years.map(() => 0)
+  const totalAccounts = logos.reduce((s, st) => s + (st.counts ?? []).reduce((a, c) => a + (c || 0), 0), 0)
+  const accounts2030 = contracts[last] ?? 0
+  // NEW-logo revenue 2030 = all three streams' logo omzet that year (excludes cross-sell).
+  const newLogoRev2030 =
+    (revenue.logoOmzet.google[last] ?? 0) + (revenue.logoOmzet.microsoft[last] ?? 0) + (revenue.logoOmzet.puls[last] ?? 0)
+  const avgNewAccount = accounts2030 > 0 ? newLogoRev2030 / accounts2030 : 0
+  return (
+    <KpiStrip>
+      <Kpi label="New accounts 2027-2030" value={fmtNum(Math.round(totalAccounts))} sub="total new logos" accent />
+      <Kpi label={`Contracts to sign ${revenue.years[last]}`} value={fmtNum(Math.round(accounts2030))} sub="new logos that year" />
+      <Kpi label={`Leads / yr ${revenue.years[last]}`} value={fmtNum(Math.round(leads[last] ?? 0))} sub="top of funnel" />
+      <Kpi label="Lead-gen coverage" value={fmtPct(funnel.coverage)} sub="capacity vs leads needed" />
+      <Kpi label={`Avg new-account value ${revenue.years[last]}`} value={fmtEur(avgNewAccount)} sub="new-logo rev / accounts" />
+    </KpiStrip>
+  )
+}
+
+// New accounts signed per year, one stacked bar series per logo stream. Each stream's bar =
+// that year's counts[y] (new accounts). Because contracts in computeWorkbookFunnel are the sum
+// of every stream's counts, the stack total per year equals the funnel's "Contracten" row.
+function NewAccountsPerYearPanel({
+  logos,
+  years,
+  funnel,
+}: {
+  logos: LogoStream[]
+  years: number[]
+  funnel: WorkbookFunnel
+}) {
+  const last = years.length - 1
+  const contracts = funnel.stages.find((s) => s.stage === 'Contracts')?.perYear ?? years.map(() => 0)
+  const totalAccounts = logos.reduce((s, st) => s + (st.counts ?? []).reduce((a, c) => a + (c || 0), 0), 0)
+  const data: Datum[] = years.map((y, yi) => {
+    const row: Datum = { year: String(y) }
+    logos.forEach((s) => {
+      row[s.key] = s.counts[yi] ?? 0
+    })
+    return row
+  })
+  const bars = logos.map((s) => ({
+    key: s.key,
+    name: s.label,
+    color: STREAM_COLORS[s.key] ?? CAT[0],
+  }))
+  return (
+    <Panel
+      title="New accounts per year"
+      subtitle="New logos signed each year, split by stream. The stack total equals the funnel's Contracten row."
+    >
+      <StackedBarsChart data={data} xKey="year" bars={bars} valueFmt="num" height={300} />
+      <p className="mt-4 border-t border-suite-border pt-3 text-sm text-suite-ink-2">
+        Total new accounts {years[0]}-{years[last]} ={' '}
+        <span className="font-semibold text-suite-ink">{fmtNum(Math.round(totalAccounts))}</span> · lines up with the{' '}
+        {fmtNum(Math.round(contracts.reduce((a, c) => a + (c || 0), 0)))} contracts the funnel must produce.
+      </p>
+    </Panel>
+  )
+}
+
+// Identified pipeline vs undiscovered white space, from the marktanalyse (prospects.ts).
+// A small coverage summary + a tiny stacked bar of identified vs undiscovered of the 220 kern
+// orgs, then two tables (new-business prospects, current-client cross-sell) behind foldouts.
+function PipelineWhiteSpacePanel() {
+  const cov = marketCoverage()
+  // Prospects: active (High) first, then by modeled ARR desc.
+  const prospectsSorted = [...PROSPECTS].sort((a, b) => {
+    const aa = isActiveProspect(a) ? 1 : 0
+    const bb = isActiveProspect(b) ? 1 : 0
+    if (aa !== bb) return bb - aa
+    return TIER_ARR[b.tier] - TIER_ARR[a.tier]
+  })
+  // Current clients: most open cross-sell slots first.
+  const clientsSorted = [...CURRENT_CLIENTS].sort((a, b) => b.crossSellOpen - a.crossSellOpen)
+  const coverageBar: Datum[] = [
+    { label: 'Kern-ICP (220)', identified: cov.identified, undiscovered: cov.undiscovered },
+  ]
+  return (
+    <Panel
+      title="Identified pipeline & white space"
+      subtitle="Market intel from the marktanalyse · ICP represented via value tier + sales priority; staff = total employees."
+    >
+      <Foldout label="Show identified pipeline & white space">
+        <div className="space-y-5">
+          {/* Coverage stats + a tiny identified-vs-undiscovered bar of the 220 kern orgs */}
+          <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+              <MiniStat label="Current clients" value={fmtNum(cov.clients)} />
+              <MiniStat label="Active prospects" value={fmtNum(cov.prospectsActive)} sub={`of ${fmtNum(cov.prospectsTotal)} identified`} />
+              <MiniStat label="Identified total" value={fmtNum(cov.identified)} sub={`of ${fmtNum(cov.kernOrgs)} kern orgs`} />
+              <MiniStat label="Undiscovered white space" value={fmtNum(cov.undiscovered)} sub={`+ ${fmtM(cov.identifiedArr)} active pipeline ARR`} />
+            </div>
+            <div>
+              <p className="mb-1 text-[11px] uppercase tracking-wide text-suite-ink-3">Coverage of the 220 kern orgs</p>
+              <div style={{ width: '100%', height: 120 }}>
+                <ResponsiveContainer>
+                  <ComposedChart data={coverageBar} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }}>
+                    <XAxis type="number" tick={{ fill: C.ink3, fontSize: 11 }} tickLine={false} axisLine={{ stroke: C.grid }} />
+                    <YAxis type="category" dataKey="label" tick={{ fill: C.ink3, fontSize: 11 }} tickLine={false} axisLine={false} width={96} />
+                    <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtNum(Math.round(v)))} cursor={{ fill: 'transparent' }} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+                    <Bar dataKey="identified" name="Identified" stackId="k" fill={SEMANTIC.pos} radius={[2, 0, 0, 2]} isAnimationActive={false} />
+                    <Bar dataKey="undiscovered" name="Undiscovered" stackId="k" fill={C.neutral} radius={[0, 2, 2, 0]} isAnimationActive={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* New-business prospects */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">New-business prospects</p>
+            <div className="overflow-x-auto">
+              <table className={tbl.table}>
+                <thead>
+                  <tr>
+                    <th className={tbl.th}>Name</th>
+                    <th className={tbl.th}>Tier</th>
+                    <th className={tbl.thR}>Employees</th>
+                    <th className={tbl.thR}>Modeled ARR</th>
+                    <th className={tbl.th}>Priority</th>
+                    <th className={tbl.th}>Current partner</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prospectsSorted.map((p, i) => (
+                    <tr key={`${p.name}-${i}`} className={isActiveProspect(p) ? tbl.trHighlight : tbl.tr} title={p.note}>
+                      <td className={cx(tbl.td, isActiveProspect(p) && 'font-semibold')}>{p.name}</td>
+                      <td className={tbl.td}>{TIER_LABEL[p.tier]}</td>
+                      <td className={tbl.tdR}>{p.employees == null ? '·' : fmtNum(p.employees)}</td>
+                      <td className={tbl.tdR}>{fmtM(TIER_ARR[p.tier])}</td>
+                      <td className={tbl.td}>{p.priority}</td>
+                      <td className={cx(tbl.td, 'max-w-[10rem] truncate text-suite-ink-2')} title={p.partner}>{p.partner}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Current-client cross-sell openings */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Current-client cross-sell</p>
+            <div className="overflow-x-auto">
+              <table className={tbl.table}>
+                <thead>
+                  <tr>
+                    <th className={tbl.th}>Name</th>
+                    <th className={tbl.thR}>Employees</th>
+                    <th className={tbl.th}>Tier</th>
+                    <th className={tbl.thR}>Cross-sell open</th>
+                    <th className={tbl.th}>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientsSorted.map((c, i) => (
+                    <tr key={`${c.name}-${i}`} className={tbl.tr}>
+                      <td className={cx(tbl.td, 'font-medium')}>{c.name}</td>
+                      <td className={tbl.tdR}>{c.employees == null ? '·' : fmtNum(c.employees)}</td>
+                      <td className={tbl.td}>{TIER_LABEL[c.tier]}</td>
+                      <td className={tbl.tdR}>{fmtNum(c.crossSellOpen)} products</td>
+                      <td className={cx(tbl.td, 'max-w-[16rem] truncate text-suite-ink-2')} title={c.note}>{c.note || '·'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Foldout>
+    </Panel>
+  )
+}
+
+// A tiny label/value/sub stat card reused inside the pipeline white-space foldout.
+function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-suite-border bg-suite-bg px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-suite-ink-3">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-suite-ink">{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] text-suite-ink-3">{sub}</div>}
+    </div>
+  )
+}
+
 // --- People & costs area: visual-first. Where the heads + overhead sit by entity, how
 // they grow, and an editable roster whose entity-allocation re-allocates personnel cost
 // between entities (zero-sum at group level), flowing straight into the Costs & P&L EBIT.
@@ -1742,6 +2050,14 @@ function PeopleArea({
     color: SEMANTIC.cost[i],
   }))
 
+  // 5th KPI · personnel cost as % of revenue in the last year. 2030 personnel = live personnel
+  // by entity summed; 2030 revenue reconstructed from revenue-per-FTE x total FTE (== group rev).
+  const personnel2030 = personnelEnt
+    ? (personnelEnt.meevynd[last] ?? 0) + (personnelEnt.naerby[last] ?? 0) + (personnelEnt.holding[last] ?? 0)
+    : null
+  const groupRev2030 = (revPerFte[last] ?? 0) * (totalFte[last] ?? 0)
+  const personnelPctOfRev2030 = personnel2030 != null && groupRev2030 > 0 ? personnel2030 / groupRev2030 : null
+
   return (
     <section className="space-y-6">
       {/* 1) WHERE THE HEADS ARE · FTE by entity over the years + total-FTE KPIs */}
@@ -1753,6 +2069,11 @@ function PeopleArea({
         {years.map((y, i) => (
           <Kpi key={y} label={`Total FTE ${y}`} value={fmtNum(totalFte[i], 1)} sub="roster proxy" accent={i === last} />
         ))}
+        <Kpi
+          label={`Personnel % of revenue ${years[last]}`}
+          value={personnelPctOfRev2030 == null ? '·' : fmtPct(personnelPctOfRev2030)}
+          sub="personnel cost / revenue"
+        />
       </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -2177,12 +2498,19 @@ const PNL_ROWS: PnlRow[] = [
 function CostsArea({
   costs,
   years,
+  inputs,
+  marges,
 }: {
   costs: { meevynd: EntityCosts; naerby: EntityCosts; holding: EntityCosts; groep: EntityCosts }
   years: number[]
+  inputs: WorkbookInputs
+  marges: MargesMap
 }) {
   const last = years.length - 1
   const g = costs.groep
+  // Click-a-year drill-down: which model year the COGS-by-category + EBIT bridge describe.
+  const [selectedYear, setSelectedYear] = useState<number>(years[last] ?? years[0])
+  const selIdx = Math.max(0, years.indexOf(selectedYear))
 
   const groupRev2030 = g.omzet[last] ?? 0
   const groupEbit2030 = g.ebit[last] ?? 0
@@ -2235,6 +2563,11 @@ function CostsArea({
         />
         <Kpi label="EBIT margin" value={fmtPct(groupEbitMargin2030)} sub="EBIT / revenue" />
         <Kpi label="Gross margin" value={fmtPct(groupGrossMargin2030)} sub="brutomarge / revenue" />
+        <Kpi
+          label={`Cumulative EBIT ${years[0]}-${years[last]}`}
+          value={fmtM(g.ebit.reduce((s, v) => s + (v || 0), 0))}
+          sub="sum of group EBIT"
+        />
       </KpiStrip>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -2250,6 +2583,17 @@ function CostsArea({
           <CompositionChart data={compRows} />
         </Panel>
       </div>
+
+      {/* 1b) DRILL A YEAR · pick a year to see its COGS-by-category + EBIT bridge */}
+      <YearDrilldown
+        costs={costs}
+        years={years}
+        inputs={inputs}
+        marges={marges}
+        selectedYear={selectedYear}
+        selIdx={selIdx}
+        onSelectYear={setSelectedYear}
+      />
 
       {/* 2) BY ENTITY · where the profit comes from (small multiples) */}
       <div className="pt-1">
@@ -2267,6 +2611,134 @@ function CostsArea({
         <PnlTable costs={costs} years={years} />
       </Foldout>
     </section>
+  )
+}
+
+// Click-a-year drill-down: a compact row of year buttons drives a breakdown for THAT year.
+// (a) COGS by product category · from computeWorkbookCogsByCategory (same Marges margin math),
+//     coloured with the SEMANTIC.cost red ramp. (b) EBIT bridge · Revenue minus COGS minus
+//     operating costs = EBIT, pulled straight from the live group P&L (opex = brutomarge - ebit).
+function YearDrilldown({
+  costs,
+  years,
+  inputs,
+  marges,
+  selectedYear,
+  selIdx,
+  onSelectYear,
+}: {
+  costs: { meevynd: EntityCosts; naerby: EntityCosts; holding: EntityCosts; groep: EntityCosts }
+  years: number[]
+  inputs: WorkbookInputs
+  marges: MargesMap
+  selectedYear: number
+  selIdx: number
+  onSelectYear: (y: number) => void
+}) {
+  const g = costs.groep
+  // COGS by category for the selected year (drop zero-COGS categories so the chart stays clean).
+  const cogsByCat = computeWorkbookCogsByCategory(inputs, marges)
+    .map((c) => ({ label: c.label, cogs: c.perYear[selIdx] ?? 0 }))
+    .filter((c) => c.cogs > 0)
+    .sort((a, b) => b.cogs - a.cogs)
+
+  // EBIT bridge for the selected year, straight from the live group P&L.
+  const revenue = g.omzet[selIdx] ?? 0
+  const cogs = g.cogs[selIdx] ?? 0
+  const ebit = g.ebit[selIdx] ?? 0
+  const opex = (g.brutomarge[selIdx] ?? 0) - ebit
+  const bridge = [
+    { label: 'Revenue', value: revenue, tone: SEMANTIC.profit, sign: '' },
+    { label: 'minus COGS', value: cogs, tone: SEMANTIC.cost[0], sign: '-' },
+    { label: 'minus operating costs', value: opex, tone: SEMANTIC.cost[1], sign: '-' },
+    { label: 'EBIT', value: ebit, tone: ebit >= 0 ? SEMANTIC.profit : SEMANTIC.neg, sign: '=' },
+  ]
+  const bridgeMax = Math.max(revenue, 1)
+
+  return (
+    <Panel
+      title="Drill a year · COGS by category + EBIT bridge"
+      subtitle="Pick a year to see where its cost and profit come from."
+      right={
+        <div className="inline-flex rounded-lg border border-suite-border bg-suite-subtle p-0.5">
+          {years.map((y) => (
+            <button
+              key={y}
+              onClick={() => onSelectYear(y)}
+              className={cx(
+                'rounded-md px-3 py-1 text-xs font-medium tabular-nums transition-colors',
+                y === selectedYear ? 'bg-suite-bg text-suite-ink shadow-sm' : 'text-suite-ink-3 hover:text-suite-ink',
+              )}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* (a) COGS by product category · reds */}
+        <div>
+          <p className="mb-2 text-[11px] uppercase tracking-wide text-suite-ink-3">COGS by category · {selectedYear}</p>
+          {cogsByCat.length > 0 ? (
+            <div style={{ width: '100%', height: Math.max(140, cogsByCat.length * 34) }}>
+              <ResponsiveContainer>
+                <ComposedChart data={cogsByCat} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 4 }}>
+                  <CartesianGrid stroke={C.grid} horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: C.ink3, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: C.grid }}
+                    tickFormatter={(v: number) => fmtM(v, v >= 1e7 || v <= -1e7 ? 0 : 1)}
+                  />
+                  <YAxis type="category" dataKey="label" tick={{ fill: C.ink3, fontSize: 11 }} tickLine={false} axisLine={false} width={130} />
+                  <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="cogs" name="COGS" radius={[0, 2, 2, 0]} isAnimationActive={false}>
+                    {cogsByCat.map((_, i) => (
+                      <Cell key={i} fill={SEMANTIC.cost[i % SEMANTIC.cost.length]} />
+                    ))}
+                  </Bar>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-xs text-suite-ink-3">No purchase-margin COGS in {selectedYear} (services carry 0% COGS).</p>
+          )}
+          <p className="mt-2 text-[11px] text-suite-ink-3">
+            Total new-revenue COGS {selectedYear} = {fmtEur(cogsByCat.reduce((s, c) => s + c.cogs, 0))}.
+          </p>
+        </div>
+
+        {/* (b) EBIT bridge · revenue -> minus COGS -> minus opex -> EBIT */}
+        <div>
+          <p className="mb-2 text-[11px] uppercase tracking-wide text-suite-ink-3">EBIT bridge · {selectedYear}</p>
+          <div className="space-y-2">
+            {bridge.map((b) => (
+              <div key={b.label}>
+                <div className="flex items-baseline justify-between gap-2 text-xs">
+                  <span className="text-suite-ink-2">{b.label}</span>
+                  <span className="font-semibold tabular-nums text-suite-ink">
+                    {b.sign === '-' ? '-' : ''}
+                    {fmtEur(Math.abs(b.value))}
+                  </span>
+                </div>
+                <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-suite-subtle">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${Math.min(100, (Math.abs(b.value) / bridgeMax) * 100)}%`, backgroundColor: b.tone }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 border-t border-suite-border pt-2 text-[11px] text-suite-ink-3">
+            Revenue {fmtEur(revenue)} minus COGS {fmtEur(cogs)} minus operating costs {fmtEur(opex)} = EBIT{' '}
+            <span className={cx('font-semibold', pos(ebit))}>{fmtEur(ebit)}</span>.
+          </p>
+        </div>
+      </div>
+    </Panel>
   )
 }
 

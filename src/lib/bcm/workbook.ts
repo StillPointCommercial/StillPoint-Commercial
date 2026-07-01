@@ -398,6 +398,73 @@ export function newCogsByEntity(inp: WorkbookInputs, marges: MargesMap): { meevy
   return { meevynd, naerby }
 }
 
+export interface CogsCategory {
+  label: string
+  perYear: number[]
+}
+
+/**
+ * COGS of the NEW revenue split by product CATEGORY, rebuilt from the same Marges
+ * purchase-% used by newCogsByEntity (per category: revenue x purchase fraction; categories
+ * not in `marges` are 0%). Mirrors the exact margin math: mix rows distribute logo omzet by
+ * their google/ms/puls weights, cross-sell lines add to their own category. Summed over all
+ * categories this equals newCogsByEntity.meevynd + naerby per year (same components, regrouped).
+ */
+export function computeWorkbookCogsByCategory(inp: WorkbookInputs, marges: MargesMap): CogsCategory[] {
+  const omz: Record<StreamKey, number[]> = { google: zeros(), microsoft: zeros(), puls: zeros() }
+  for (const s of inp.logos) omz[s.key] = streamOmzet(s)
+
+  const byCat = new Map<string, number[]>()
+  const add = (label: string, vals: number[]): void => {
+    const cur = byCat.get(label) ?? zeros()
+    for (let y = 0; y < N; y++) cur[y] += vals[y] || 0
+    byCat.set(label, cur)
+  }
+  for (const row of inp.mix) {
+    const m = marges[row.label] ?? 0
+    add(
+      row.label,
+      SHEET_YEARS.map((_, y) => (omz.google[y] * row.google + omz.microsoft[y] * row.ms + omz.puls[y] * row.puls) * m),
+    )
+  }
+  for (const line of inp.crossSell) {
+    // Margin lookup uses the raw category (matches newCogsByEntity exactly); only the display
+    // label falls back to 'Overige' so a blank-category line still groups somewhere sensible.
+    const m = marges[line.category] ?? 0
+    add(
+      line.category || 'Overige',
+      SHEET_YEARS.map((_, y) => (line.values[y] || 0) * m),
+    )
+  }
+  return [...byCat.entries()].map(([label, perYear]) => ({ label, perYear }))
+}
+
+export interface StreamValue {
+  key: StreamKey
+  label: string
+  revenue: number[] // new-logo revenue per year for this stream (streamOmzet)
+  avgPerAccount: number[] // that year's new-logo revenue / cumulative accounts signed to date
+}
+
+/**
+ * Per logo stream, how a cohort scales in value: `revenue` is the stream's new-logo revenue
+ * per year (the same streamOmzet math the model uses everywhere), `avgPerAccount` is that
+ * year's revenue divided by the cumulative accounts signed to date (running sum of counts).
+ * Lets the user sanity-check where value lands with the per-stream growth ramp (e.g. 15%/yr).
+ * A stream with no cumulative accounts yet reports 0 for that year (avoids divide-by-zero).
+ */
+export function computeWorkbookStreamValue(inp: WorkbookInputs): StreamValue[] {
+  return inp.logos.map((s) => {
+    const revenue = streamOmzet(s)
+    let cumAccounts = 0
+    const avgPerAccount = SHEET_YEARS.map((_, y) => {
+      cumAccounts += s.counts[y] || 0
+      return cumAccounts > 0 ? revenue[y] / cumAccounts : 0
+    })
+    return { key: s.key, label: s.label, revenue, avgPerAccount }
+  })
+}
+
 const findEntity = (dashboard: DashboardBlock, name: string) =>
   dashboard.entities.find((e) => e.name === name)
 
