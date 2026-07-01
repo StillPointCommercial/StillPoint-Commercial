@@ -52,6 +52,7 @@ import {
 import {
   PROSPECTS,
   CURRENT_CLIENTS,
+  MS_SUSPECTS,
   TIER_ARR,
   TIER_LABEL,
   isActiveProspect,
@@ -1910,9 +1911,10 @@ function PipelineWhiteSpacePanel() {
         <div className="space-y-5">
           {/* Coverage stats + a tiny identified-vs-undiscovered bar of the 220 kern orgs */}
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2">
               <MiniStat label="Current clients" value={fmtNum(cov.clients)} />
-              <MiniStat label="Active prospects" value={fmtNum(cov.prospectsActive)} sub={`of ${fmtNum(cov.prospectsTotal)} identified`} />
+              <MiniStat label="Google prospects" value={fmtNum(cov.prospectsActive)} sub={`of ${fmtNum(cov.prospectsTotal)} identified`} />
+              <MiniStat label="Microsoft suspects" value={fmtNum(cov.msSuspects)} sub="MS365-onderzoek" />
               <MiniStat label="Identified total" value={fmtNum(cov.identified)} sub={`of ${fmtNum(cov.kernOrgs)} kern orgs`} />
               <MiniStat label="Undiscovered white space" value={fmtNum(cov.undiscovered)} sub={`+ ${fmtM(cov.identifiedArr)} active pipeline ARR`} />
             </div>
@@ -1935,7 +1937,7 @@ function PipelineWhiteSpacePanel() {
 
           {/* New-business prospects */}
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">New-business prospects</p>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Google new-business prospects</p>
             <div className="overflow-x-auto">
               <table className={tbl.table}>
                 <thead>
@@ -1962,6 +1964,38 @@ function PipelineWhiteSpacePanel() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Microsoft suspects (MS365-onderzoek + outreach) */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-suite-ink-2">Microsoft suspects (MS365-onderzoek)</p>
+            <div className="overflow-x-auto">
+              <table className={tbl.table}>
+                <thead>
+                  <tr>
+                    <th className={tbl.th}>Name</th>
+                    <th className={tbl.th}>Segment</th>
+                    <th className={tbl.th}>Signal</th>
+                    <th className={tbl.thR}>Contacts</th>
+                    <th className={tbl.thR}>Last touch</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MS_SUSPECTS.map((m, i) => (
+                    <tr key={`${m.name}-${i}`} className={tbl.tr}>
+                      <td className={cx(tbl.td, 'font-medium')}>{m.name}</td>
+                      <td className={tbl.td}>{m.segment}</td>
+                      <td className={tbl.td}>{m.stage}</td>
+                      <td className={tbl.tdR}>{fmtNum(m.contacts)}</td>
+                      <td className={tbl.tdR}>{m.last}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-[11px] text-suite-ink-3">
+              Earlier stage than the Google prospects: orgs engaged via the MS365-onderzoek + outreach. The source is a contact list, so there is no value tier or ARR column here.
+            </p>
           </div>
 
           {/* Current-client cross-sell openings */}

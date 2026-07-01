@@ -77,6 +77,36 @@ export const CURRENT_CLIENTS: ClientCrossSell[] = [
   { name: 'Leading Aesthetics', employees: 20, tier: 'seed', crossSellOpen: 0, note: 'Koos voor Microsoft; aflopend Google-account.' },
 ]
 
+// Microsoft suspects: orgs surfaced via the MS365-onderzoek + outreach. Earlier stage than the
+// Google prospects and from a contact list, so no value tier / employee count in the source,
+// only the org, care segment, how many people are engaged, the signal stage, and last touch.
+export interface MicrosoftSuspect {
+  name: string
+  segment: string // VVT / Ziekenhuis / UMC / Koepel
+  contacts: number // people engaged at the org
+  stage: string // 'MS365-onderzoek' | 'Outreach' | 'Volledig Microsoft' | 'MS-signaal'
+  last: string // last contact date (ISO)
+}
+
+export const MS_SUSPECTS: MicrosoftSuspect[] = [
+  { name: 'Careyn', segment: 'VVT', contacts: 3, stage: 'MS365-onderzoek', last: '2025-03-17' },
+  { name: 'Cordaan', segment: 'VVT', contacts: 3, stage: 'Volledig Microsoft', last: '2025-03-18' },
+  { name: 'Heliomare', segment: 'Ziekenhuis / UMC', contacts: 3, stage: 'MS365-onderzoek', last: '2025-05-20' },
+  { name: 'SZMK', segment: 'VVT', contacts: 3, stage: 'MS365-onderzoek', last: '2025-03-17' },
+  { name: 'Tante Louise', segment: 'VVT', contacts: 3, stage: 'MS365-onderzoek', last: '2025-03-17' },
+  { name: 'Thebe', segment: 'VVT', contacts: 3, stage: 'MS365-onderzoek', last: '2025-03-17' },
+  { name: 'IJsselheem', segment: 'VVT', contacts: 2, stage: 'MS365-onderzoek', last: '2025-03-03' },
+  { name: 'Zonnehuisgroep Noord', segment: 'VVT', contacts: 2, stage: 'MS365-onderzoek', last: '2025-03-17' },
+  { name: 'Cardia', segment: 'VVT', contacts: 1, stage: 'MS365-onderzoek', last: '2025-02-26' },
+  { name: 'Erasmus MC', segment: 'Ziekenhuis / UMC', contacts: 1, stage: 'Outreach', last: '2024-11-26' },
+  { name: 'Het Zand', segment: 'VVT', contacts: 1, stage: 'MS365-onderzoek', last: '2025-02-26' },
+  { name: 'Omring', segment: 'VVT', contacts: 1, stage: 'MS365-onderzoek', last: '2025-02-26' },
+  { name: 'Radboudumc', segment: 'Ziekenhuis / UMC', contacts: 1, stage: 'Outreach', last: '2024-11-26' },
+  { name: 'Sigra', segment: 'Koepel', contacts: 1, stage: 'MS365-onderzoek', last: '2025-03-03' },
+  { name: 'UMC Utrecht', segment: 'Ziekenhuis / UMC', contacts: 1, stage: 'Outreach', last: '2024-11-09' },
+  { name: 'Zorggroep IJV / Vereen', segment: 'VVT', contacts: 1, stage: 'MS-signaal', last: '2025-02-07' },
+]
+
 /** Active pipeline = high-priority prospects (not blacklisted / doubtful). */
 export const isActiveProspect = (p: Prospect): boolean => /^high$/i.test(p.priority)
 
@@ -84,7 +114,8 @@ export interface MarketCoverage {
   clients: number
   prospectsActive: number
   prospectsTotal: number
-  identified: number // clients + active prospects
+  msSuspects: number
+  identified: number // clients + active Google prospects + MS suspects
   kernOrgs: number // kern-ICP org count (SAM)
   undiscovered: number // kern - identified: white space not yet on the radar
   identifiedArr: number // modeled ARR of the active prospect pipeline
@@ -95,11 +126,13 @@ export interface MarketCoverage {
 export function marketCoverage(): MarketCoverage {
   const clients = CURRENT_CLIENTS.length
   const active = PROSPECTS.filter(isActiveProspect)
-  const identified = clients + active.length
+  const msSuspects = MS_SUSPECTS.length
+  const identified = clients + active.length + msSuspects
   return {
     clients,
     prospectsActive: active.length,
     prospectsTotal: PROSPECTS.length,
+    msSuspects,
     identified,
     kernOrgs: KERN_ICP_ORGS,
     undiscovered: Math.max(0, KERN_ICP_ORGS - identified),
