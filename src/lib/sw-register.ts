@@ -5,6 +5,10 @@ export function registerServiceWorker() {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js')
 
+      // Proactively check for a newer worker on every load so fresh deploys are
+      // picked up without a hard refresh. (No auto-reload: it would discard unsaved edits.)
+      void registration.update()
+
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing
         if (!newWorker) return
