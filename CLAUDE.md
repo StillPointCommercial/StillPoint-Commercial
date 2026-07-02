@@ -13,6 +13,10 @@ Conventions:
 
 - typecheck: npx tsc --noEmit
 - test: npx vitest run
-- lint: skipped (eslint not installed; `next lint` would prompt interactively)
+- lint: npm run lint
 - deadcode: skipped (knip not installed)
 - shell: skipped (shellcheck not installed)
+
+Accepted audit residual: 2 moderate advisories against the postcss copy pinned
+inside next's own dependency tree (build-time only; npm's proposed "fix" is a
+downgrade to next 9). Revisit on the next Next.js upgrade.

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db/dexie'
 import type { Opportunity, OpportunityStage, Contact } from '@/lib/types'
@@ -17,7 +18,8 @@ export function KanbanBoard() {
   const [draggedOpp, setDraggedOpp] = useState<Opportunity | null>(null)
   const [quickLogOpp, setQuickLogOpp] = useState<Opportunity | null>(null)
 
-  const opportunities = useLiveQuery(() => db.opportunities.toArray()) ?? []
+  // Third arg = stable default, so hooks depending on this don't re-fire every render.
+  const opportunities = useLiveQuery(() => db.opportunities.toArray(), [], [] as Opportunity[])
   const contacts = useLiveQuery(() => db.contacts.toArray()) ?? []
   const contactMap = new Map(contacts.map((c: Contact) => [c.id, c]))
 
@@ -67,9 +69,9 @@ export function KanbanBoard() {
           <p className="text-text-light mb-2">No opportunities yet.</p>
           <p className="text-sm text-text-light mb-4">
             Create one from a{' '}
-            <a href="/tools/cis/contacts" className="text-terracotta underline hover:text-[#a07860]">
+            <Link href="/tools/cis/contacts" className="text-terracotta underline hover:text-[#a07860]">
               contact page
-            </a>
+            </Link>
             , or use the button below.
           </p>
         </div>

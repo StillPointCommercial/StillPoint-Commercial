@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 export default function ErrorPage({
   error,
   reset,
@@ -21,12 +23,12 @@ export default function ErrorPage({
           >
             Try again
           </button>
-          <a
+          <Link
             href="/"
             className="px-5 py-2.5 border border-gray-200 text-charcoal rounded-xl text-sm font-medium hover:bg-cream transition-colors"
           >
             Go to dashboard
-          </a>
+          </Link>
         </div>
       </div>
     </div>

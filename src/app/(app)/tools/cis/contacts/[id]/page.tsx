@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useContact } from '@/lib/hooks/use-contacts'
 import { ContactHeader } from '@/components/contacts/contact-header'
@@ -22,7 +23,7 @@ export default function ContactDetailPage() {
     return (
       <div className="py-16 text-center">
         <p className="text-text-light mb-4">Contact not found</p>
-        <a href="/tools/cis/contacts" className="text-accent underline">Back to contacts</a>
+        <Link href="/tools/cis/contacts" className="text-accent underline">Back to contacts</Link>
       </div>
     )
   }

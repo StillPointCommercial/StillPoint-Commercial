@@ -29,7 +29,7 @@ function calculateVelocity(opportunities: Opportunity[]): number | null {
 }
 
 export function PipelineSummary() {
-  const opportunities = useLiveQuery(() => db.opportunities.toArray()) ?? []
+  const opportunities = useLiveQuery(() => db.opportunities.toArray(), [], [] as Opportunity[])
 
   const { inProgress, pipelineValue, weightedValue, securedValue, avgDaysToClose } = useMemo(() => {
     const inProgress = opportunities.filter(

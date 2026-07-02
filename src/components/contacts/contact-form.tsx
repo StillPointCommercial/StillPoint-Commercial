@@ -54,7 +54,7 @@ export function ContactForm({ open, onClose, contact, onSaved }: ContactFormProp
   const [showCompanySuggestions, setShowCompanySuggestions] = useState(false)
 
   // Get unique existing companies for autocomplete
-  const allContacts = useLiveQuery(() => db.contacts.toArray()) ?? []
+  const allContacts = useLiveQuery(() => db.contacts.toArray(), [], [] as Contact[])
   const existingCompanies = useMemo(() => {
     const companies = new Set<string>()
     for (const c of allContacts) {
