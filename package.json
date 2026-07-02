@@ -14,7 +14,7 @@
     "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.82.0",
+    "@anthropic-ai/sdk": "^0.109.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "dexie": "^4.0.11",
