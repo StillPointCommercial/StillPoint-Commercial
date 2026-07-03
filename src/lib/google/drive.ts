@@ -50,3 +50,19 @@ export async function copyFile(
   if (!json.id) throw new Error('Google Drive did not return a copied file id.')
   return { id: json.id, url: `https://docs.google.com/spreadsheets/d/${json.id}/edit` }
 }
+
+/**
+ * Read a file's Drive modifiedTime (RFC 3339 string). Cheap change detection for the
+ * sheet -> app direction of the workbook round-trip: the studio polls this and pulls
+ * a fresh read when the Sheet was edited in Google directly.
+ */
+export async function getFileModifiedTime(accessToken: string, fileId: string): Promise<string> {
+  const res = await fetch(
+    `${DRIVE_BASE}/files/${encodeURIComponent(fileId)}?fields=modifiedTime&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  )
+  if (!res.ok) throw new Error(await driveError(res))
+  const json = (await res.json()) as { modifiedTime?: string }
+  if (!json.modifiedTime) throw new Error('Google Drive did not return a modifiedTime.')
+  return json.modifiedTime
+}

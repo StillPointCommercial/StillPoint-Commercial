@@ -7,6 +7,10 @@
 // named scenarios instantly from their snapshots. Saved scenarios each own a Sheet
 // copy; the source is never touched. On export Google recalculates the full P&L from
 // our input cells; the live EBIT here is the app-side preview of that recompute.
+//
+// Sync model: app -> sheet on every Save (input cells written, Google recalculates);
+// sheet -> app via "Pull sheet" plus a modifiedTime poll that auto-pulls edits made
+// directly in Google while the local model is clean (a banner mediates when dirty).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -72,6 +76,7 @@ import {
   deriveCostContext,
   personnelByEntity,
   fteByEntity,
+  roleCost,
   DEFAULT_FUNNEL,
   type StreamKey,
   type LogoStream,
@@ -359,6 +364,26 @@ function Foldout({ label, children }: { label: string; children: React.ReactNode
 // Deep-clone an inputs snapshot so rollback baselines never alias the live object.
 const cloneInputs = (i: WorkbookInputs): WorkbookInputs => JSON.parse(JSON.stringify(i)) as WorkbookInputs
 
+// Read the workbook file's Drive modifiedTime via the status route. Null on any
+// failure; the poller simply tries again next tick.
+async function readSheetModifiedTime(fileId: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/bcm/workbook/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { modifiedTime?: string }
+    return json.modifiedTime ?? null
+  } catch {
+    return null
+  }
+}
+
+// How often the open workbook checks its Sheet for edits made directly in Google.
+const SHEET_POLL_MS = 15000
+
 export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId: string | null }) {
   const [phase, setPhase] = useState<Phase>('empty')
   const [url, setUrl] = useState('')
@@ -383,6 +408,13 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   // so restoring an inputs snapshot is a complete rollback.
   const [importedInputs, setImportedInputs] = useState<WorkbookInputs | null>(null)
   const [savePoint, setSavePoint] = useState<WorkbookInputs | null>(null)
+
+  // Sheet -> app sync: poll the open workbook's Drive modifiedTime. When the Sheet was
+  // edited in Google and the local model is clean, pull the fresh numbers automatically;
+  // with unsaved local tweaks, raise a banner instead so nothing is clobbered silently.
+  const [pulling, setPulling] = useState(false)
+  const [sheetChanged, setSheetChanged] = useState(false)
+  const lastSheetModRef = useRef<string | null>(null)
 
   // Active area. The compact header + KPI strip stay above this; only the active area
   // renders below the area nav.
@@ -479,6 +511,46 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     setPhase('empty')
     void refreshScenarios()
   }, [userId, orgId, refreshScenarios])
+
+  // Live render-synced mirrors for the poller (an interval closure would otherwise see
+  // stale state). pullFromSheet is a hoisted function declared further down.
+  const syncBusyRef = useRef(false)
+  syncBusyRef.current = importing || saving || savingAs || pulling
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirtySinceSave
+  const pullRef = useRef<() => Promise<void>>(async () => {})
+  pullRef.current = pullFromSheet
+
+  // Poll the open workbook's Sheet for edits made directly in Google (visible tab only).
+  // Our own saves also bump modifiedTime; the auto-pull they trigger is harmless - it
+  // reads back the values we just wrote plus Google's recalculated dashboard, truing up
+  // the frozen cost baseline against the sheet's own recompute.
+  const sheetFileId = working ? working.copyId ?? working.sourceId : null
+  useEffect(() => {
+    if (phase !== 'loaded' || !sheetFileId) return
+    lastSheetModRef.current = null
+    setSheetChanged(false)
+    let stopped = false
+    const tick = async () => {
+      if (stopped || document.visibilityState !== 'visible' || syncBusyRef.current) return
+      const mod = await readSheetModifiedTime(sheetFileId)
+      if (stopped || !mod) return
+      if (lastSheetModRef.current === null) {
+        lastSheetModRef.current = mod // first read after load = the baseline
+        return
+      }
+      if (mod === lastSheetModRef.current || syncBusyRef.current) return
+      lastSheetModRef.current = mod
+      if (dirtyRef.current) setSheetChanged(true)
+      else void pullRef.current()
+    }
+    void tick()
+    const id = setInterval(tick, SHEET_POLL_MS)
+    return () => {
+      stopped = true
+      clearInterval(id)
+    }
+  }, [phase, sheetFileId])
 
   function startNewImport() {
     setPhase('empty')
@@ -585,6 +657,64 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     setExportNote(null)
     setView('scenarios')
     setPhase('loaded')
+  }
+
+  // PULL FROM SHEET: re-read the scenario's copy (or the source for a draft) and make
+  // the Sheet the working truth: fresh inputs + blocks, rebuilt cost baseline, and the
+  // scenario snapshot persisted. Funnel params are app-only (never parsed back from the
+  // sheet), so the current ones carry over; everything else (revenue inputs, roster incl.
+  // its H/I/J entity splits, overhead, margins, dashboard) follows the sheet. Discards
+  // unsaved local tweaks by design - when dirty, the poller raises a banner instead of
+  // calling this, so the user chooses.
+  async function pullFromSheet() {
+    if (!working || pulling || importing) return
+    const body = working.copyId
+      ? { copyId: working.copyId }
+      : working.sourceId
+        ? { url: `https://docs.google.com/spreadsheets/d/${working.sourceId}` }
+        : null
+    if (!body) return
+    setPulling(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/bcm/workbook/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = (await res.json()) as ImportOk | ImportErr
+      if (!res.ok || 'error' in json) {
+        setError(`Pull from Sheet failed: ${(json as ImportErr).error ?? 'unknown error'}`)
+        return
+      }
+      const ok = json as ImportOk
+      const blocks = asBlocks(ok.blocks)
+      const funnel = inputs?.funnel
+      const nextInputs = withRoster(funnel ? { ...ok.inputs, funnel } : withFunnel(ok.inputs), blocks)
+      setWorking(
+        buildWorking(
+          {
+            sourceId: working.sourceId,
+            copyId: working.copyId,
+            copyUrl: working.copyUrl,
+            title: working.title,
+            mappingId: working.mappingId,
+            blocks,
+          },
+          nextInputs,
+        ),
+      )
+      setInputs(nextInputs)
+      // The sheet as just read is the new rollback/reset baseline ("the sheet as last pulled").
+      setImportedInputs(cloneInputs(nextInputs))
+      setSavePoint(cloneInputs(nextInputs))
+      setSheetChanged(false)
+      if (activeId) await updateWorkbookScenario(activeId, { inputs: nextInputs, blocks })
+    } catch (err) {
+      setError(`Pull from Sheet failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+    } finally {
+      setPulling(false)
+    }
   }
 
   // RENAME the active scenario inline (Enter / blur). No-op for an unsaved draft.
@@ -942,6 +1072,17 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
           Modified
         </span>
       )}
+      {(working.copyId || working.sourceId) && (
+        <button
+          onClick={pullFromSheet}
+          disabled={pulling || saving || savingAs}
+          title="Pull the latest numbers from the Sheet (edits made in Google flow in here)"
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-2.5 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={pulling ? 'animate-spin' : undefined} />
+          <span className="hidden lg:inline">{pulling ? 'Pulling…' : 'Pull sheet'}</span>
+        </button>
+      )}
       {activeId && (
         <button
           onClick={handleSave}
@@ -1013,6 +1154,29 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <p className="font-medium">{error}</p>
+        </div>
+      )}
+      {sheetChanged && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          <AlertTriangle size={15} className="shrink-0" />
+          <p className="font-medium">
+            The Sheet changed in Google, but you have unsaved tweaks here, so nothing was overwritten.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={pullFromSheet}
+              disabled={pulling}
+              className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pulling ? 'Pulling…' : 'Pull the sheet (discards local tweaks)'}
+            </button>
+            <button
+              onClick={() => setSheetChanged(false)}
+              className="rounded-lg px-2 py-1 font-medium text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              Keep my tweaks
+            </button>
+          </div>
         </div>
       )}
 
@@ -2141,7 +2305,10 @@ function PeopleArea({
         </Panel>
       </div>
 
-      {/* 2) WHERE THE COSTS SIT · personnel by entity + overhead by entity */}
+      {/* 2) THE ORG · roster drawn as the holding structure, per year */}
+      {roster && roster.length > 0 && <OrgChart years={years} roster={roster} />}
+
+      {/* 3) WHERE THE COSTS SIT · personnel by entity + overhead by entity */}
       <div className="pt-1">
         <h2 className="text-base font-semibold text-suite-ink">Where the costs sit</h2>
       </div>
@@ -2230,13 +2397,194 @@ function PeopleArea({
         </Foldout>
       )}
 
-      {/* 3) THE ROSTER · editable entity allocation per role */}
+      {/* 4) THE ROSTER · editable entity allocation per role */}
       {roster && roster.length > 0 && (
         <Foldout label="Show roster">
           <RosterTable years={years} roster={roster} onPatchPct={onPatchPct} />
         </Foldout>
       )}
     </section>
+  )
+}
+
+// --- Org chart: the roster drawn as the holding structure (Holding on top, Meevynd +
+// Naerby beneath) for one selected year. The workbook has no reporting lines, so a role
+// hangs under the entity holding its LARGEST allocation share (splits shown on the card).
+// The year switcher walks the build-out: roles appear in the year they get active months,
+// joiners vs the previous year are badged "new", and later hires are listed muted.
+
+type OrgEntityKey = 'meevynd' | 'naerby' | 'holding'
+
+const ORG_LEAD_RE = /(directeur|director|managing|founder|oprichter|partner|ceo|coo|cto|cfo)/i
+
+/** Entity a role hangs under: its largest allocation share (ties resolved in
+ *  Meevynd > Naerby > Holding order); a fully unallocated role sits at Holding. */
+function orgHome(role: RosterRole): OrgEntityKey {
+  const { meevynd, naerby, holding } = role.pct
+  const max = Math.max(meevynd || 0, naerby || 0, holding || 0)
+  if (max <= 0) return 'holding'
+  if ((meevynd || 0) === max) return 'meevynd'
+  if ((naerby || 0) === max) return 'naerby'
+  return 'holding'
+}
+
+interface OrgActiveRole {
+  role: RosterRole
+  isNew: boolean // active this year, not the previous one
+}
+
+function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) {
+  const [year, setYear] = useState(String(years[0]))
+  const yi = Math.max(0, years.indexOf(Number(year)))
+
+  const { groups, fteEnt, activeCount } = useMemo(() => {
+    const groups: Record<OrgEntityKey, { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number }> = {
+      meevynd: { active: [], later: [], cost: 0 },
+      naerby: { active: [], later: [], cost: 0 },
+      holding: { active: [], later: [], cost: 0 },
+    }
+    for (const role of roster) {
+      const home = orgHome(role)
+      if ((role.months[yi] || 0) > 0) {
+        groups[home].active.push({ role, isNew: yi > 0 && (role.months[yi - 1] || 0) === 0 })
+      } else {
+        const j = role.months.findIndex((m, k) => k > yi && (m || 0) > 0)
+        if (j >= 0) groups[home].later.push({ name: role.name, year: years[j] })
+      }
+      // Loaded cost lands on ALL entities per the split, not just the home one.
+      const c = roleCost(role)[yi] || 0
+      groups.meevynd.cost += c * (role.pct.meevynd || 0)
+      groups.naerby.cost += c * (role.pct.naerby || 0)
+      groups.holding.cost += c * (role.pct.holding || 0)
+    }
+    const rank = (r: RosterRole) => (ORG_LEAD_RE.test(r.name) ? 0 : 1)
+    for (const key of Object.keys(groups) as OrgEntityKey[]) {
+      groups[key].active.sort((a, b) => rank(a.role) - rank(b.role) || b.role.bruto - a.role.bruto)
+      groups[key].later.sort((a, b) => a.year - b.year)
+    }
+    const fteEnt = fteByEntity(roster)
+    const activeCount = groups.meevynd.active.length + groups.naerby.active.length + groups.holding.active.length
+    return { groups, fteEnt, activeCount }
+  }, [roster, yi, years])
+
+  const holding = PEOPLE_ENTITIES.find((e) => e.key === 'holding')!
+  const children = PEOPLE_ENTITIES.filter((e) => e.key !== 'holding')
+
+  return (
+    <div className="space-y-4 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-suite-ink">The org, year by year</h2>
+          <p className="mt-0.5 text-xs text-suite-ink-3">
+            {activeCount} of {roster.length} roles active in {years[yi]} · roles sit under their largest allocation
+          </p>
+        </div>
+        <Segmented
+          options={years.map((y) => ({ value: String(y), label: String(y) }))}
+          value={String(years[yi])}
+          onChange={setYear}
+        />
+      </div>
+
+      <div>
+        <div className="mx-auto w-full max-w-md">
+          <OrgEntityCard
+            label={holding.label}
+            color={holding.color}
+            group={groups.holding}
+            fte={fteEnt.holding[yi] ?? 0}
+            yearIdx={yi}
+          />
+        </div>
+        {/* connectors: trunk under Holding, then a drop into each child column */}
+        <div className="hidden sm:block">
+          <div className="flex justify-center">
+            <div className="h-4 w-px bg-suite-border" />
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="relative h-4">
+              <div className="absolute left-1/2 right-[-0.75rem] top-0 border-t border-suite-border" />
+              <div className="absolute left-1/2 top-0 h-full w-px bg-suite-border" />
+            </div>
+            <div className="relative h-4">
+              <div className="absolute left-[-0.75rem] right-1/2 top-0 border-t border-suite-border" />
+              <div className="absolute right-1/2 top-0 h-full w-px bg-suite-border" />
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-6 sm:mt-0 sm:grid-cols-2">
+          {children.map((e) => (
+            <OrgEntityCard
+              key={e.key}
+              label={e.label}
+              color={e.color}
+              group={groups[e.key]}
+              fte={fteEnt[e.key][yi] ?? 0}
+              yearIdx={yi}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// One entity node: header (name + that year's FTE and loaded cost), active role cards
+// (with FTE, split share, and a "new" badge for joiners), and a muted later-hires line.
+function OrgEntityCard({
+  label,
+  color,
+  group,
+  fte,
+  yearIdx,
+}: {
+  label: string
+  color: string
+  group: { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number }
+  fte: number
+  yearIdx: number
+}) {
+  return (
+    <div className="rounded-xl border border-suite-border bg-suite-bg">
+      <div className="flex items-center justify-between gap-2 border-b border-suite-border px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+          <span className="truncate text-sm font-semibold text-suite-ink">{label}</span>
+        </div>
+        <span className="shrink-0 text-[11px] tabular-nums text-suite-ink-3">
+          {fmtNum(fte, 1)} FTE · {fmtEur(Math.round(group.cost))}
+        </span>
+      </div>
+      <div className="space-y-1.5 p-3">
+        {group.active.length === 0 && <p className="text-[11px] text-suite-ink-3">No roles yet this year.</p>}
+        {group.active.map(({ role, isNew }, i) => {
+          const home = orgHome(role)
+          const share = role.pct[home] || 0
+          return (
+            <div key={`${role.name}-${i}`} className="rounded-lg border border-suite-border bg-suite-subtle px-3 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-suite-ink">{role.name}</span>
+                {isNew && (
+                  <span className="shrink-0 rounded bg-suite-accent-tint px-1.5 py-0.5 text-[10px] font-medium text-suite-accent-dark">
+                    new
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 text-[10px] tabular-nums text-suite-ink-3">
+                {fmtNum(Math.min(12, role.months[yearIdx] || 0) / 12, 1)} FTE
+                {share > 0 && share < 1 && ` · ${Math.round(share * 100)}% here`}
+                {share <= 0 && ' · unallocated'}
+              </div>
+            </div>
+          )
+        })}
+        {group.later.length > 0 && (
+          <p className="pt-1 text-[10px] leading-relaxed text-suite-ink-3">
+            Joins later: {group.later.map((l) => `${l.name} (${l.year})`).join(', ')}
+          </p>
+        )}
+      </div>
+    </div>
   )
 }
 
