@@ -11,6 +11,11 @@
 // Sync model: app -> sheet on every Save (input cells written, Google recalculates);
 // sheet -> app via "Pull sheet" plus a modifiedTime poll that auto-pulls edits made
 // directly in Google while the local model is clean (a banner mediates when dirty).
+//
+// Session persistence: the working session (scenario, unsaved edits, active view) is
+// snapshotted to localStorage while you work and restored on the next visit, so a
+// refresh never dumps you back at the import screen; a beforeunload prompt guards
+// closing the tab with unsaved edits.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -62,7 +67,18 @@ import {
   isActiveProspect,
   marketCoverage,
 } from '@/lib/bcm/prospects'
-import { C, CAT, SEMANTIC, LinesChart, StackedAreaChart, StackedBarsChart, tipFmt, type SeriesDef, type Datum } from './charts'
+import {
+  C,
+  CAT,
+  SEMANTIC,
+  LinesChart,
+  StackedAreaChart,
+  StackedBarsChart,
+  SingleSeriesTip,
+  tipFmt,
+  type SeriesDef,
+  type Datum,
+} from './charts'
 import { SectionGrid, yearRows } from './helpers'
 import {
   computeWorkbookRevenue,
@@ -364,6 +380,26 @@ function Foldout({ label, children }: { label: string; children: React.ReactNode
 // Deep-clone an inputs snapshot so rollback baselines never alias the live object.
 const cloneInputs = (i: WorkbookInputs): WorkbookInputs => JSON.parse(JSON.stringify(i)) as WorkbookInputs
 
+// --- Local session persistence: the whole working session (scenario, edits, view) is
+// snapshotted to localStorage while you work, so a browser refresh restores exactly
+// where you were - unsaved tweaks included. Keyed per account + workspace so nothing
+// leaks across workspaces. scenarioUpdatedAt detects a newer save made elsewhere.
+interface PersistedWorkbookSession {
+  working: Working
+  inputs: WorkbookInputs
+  importedInputs: WorkbookInputs | null
+  savePoint: WorkbookInputs | null
+  activeId: string | null
+  name: string
+  view: WorkbookView
+  scenarioUpdatedAt: string | null
+}
+
+const workbookSessionKey = (userId: string, orgId: string | null) =>
+  `bcm-workbook-session:${userId}:${orgId ?? 'personal'}`
+
+const isWorkbookView = (v: unknown): v is WorkbookView => VIEW_OPTIONS.some((o) => o.value === v)
+
 // Read the workbook file's Drive modifiedTime via the status route. Null on any
 // failure; the poller simply tries again next tick.
 async function readSheetModifiedTime(fileId: string): Promise<string | null> {
@@ -497,9 +533,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     return rows
   }, [userId, orgId])
 
-  // Reset to a clean draft + reload the list whenever the account or workspace changes.
-  // The parent passes a new orgId when the owner switches workspace; the working context
-  // (and any active scenario) from the previous workspace must not leak across.
+  // Reset + RESTORE whenever the account or workspace changes. The working session is
+  // continuously snapshotted to localStorage (persist effect below), so a browser
+  // refresh drops you back into the scenario, edits and view you were in instead of
+  // the import screen. Workspace switches must not leak state across, hence the reset
+  // first; the restore is per-workspace-keyed.
   useEffect(() => {
     if (!userId) return
     setWorking(null)
@@ -508,9 +546,100 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     setName('')
     setExportNote(null)
     setError(null)
-    setPhase('empty')
-    void refreshScenarios()
+    setSheetChanged(false)
+    let session: PersistedWorkbookSession | null = null
+    try {
+      const raw = localStorage.getItem(workbookSessionKey(userId, orgId))
+      if (raw) {
+        const s = JSON.parse(raw) as PersistedWorkbookSession
+        if (s?.working?.blocks && s?.inputs) session = s
+      }
+    } catch {
+      session = null // corrupted snapshot: start clean
+    }
+    if (session) {
+      setWorking(session.working)
+      setInputs(session.inputs)
+      setImportedInputs(session.importedInputs ?? cloneInputs(session.inputs))
+      setSavePoint(session.savePoint ?? cloneInputs(session.inputs))
+      setActiveId(session.activeId)
+      setName(session.name ?? '')
+      setView(isWorkbookView(session.view) ? session.view : 'scenarios')
+      setPhase('loaded')
+    } else {
+      setView('scenarios')
+      setPhase('empty')
+    }
+    const sess = session
+    void refreshScenarios().then((rows) => {
+      if (!sess?.activeId) return
+      const row = rows.find((r) => r.id === sess.activeId)
+      if (!row) {
+        // Scenario deleted elsewhere: keep the restored work as an unsaved draft.
+        setActiveId(null)
+        setName('')
+        return
+      }
+      // Saved newer elsewhere while this browser was away? Follow the remote snapshot
+      // only when the restored session has no unsaved local tweaks - local work wins.
+      const clean = !sess.savePoint || JSON.stringify(sess.inputs) === JSON.stringify(sess.savePoint)
+      const restoredAt = sess.scenarioUpdatedAt ? Date.parse(sess.scenarioUpdatedAt) : NaN
+      if (clean && Number.isFinite(restoredAt) && Date.parse(row.updated_at) > restoredAt) {
+        const keepView = isWorkbookView(sess.view) ? sess.view : 'scenarios'
+        handleLoad(row)
+        setView(keepView)
+      }
+    })
+    // handleLoad is a hoisted stable-in-behaviour handler; including it would re-run
+    // this reset on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, orgId, refreshScenarios])
+
+  // Continuously snapshot the working session (debounced) so a refresh or crash never
+  // loses work; the reset effect above restores it. Starting a new import (phase goes
+  // back to empty) clears the snapshot on purpose.
+  useEffect(() => {
+    if (!userId) return
+    const key = workbookSessionKey(userId, orgId)
+    if (phase === 'loaded' && working && inputs) {
+      const t = setTimeout(() => {
+        try {
+          const session: PersistedWorkbookSession = {
+            working,
+            inputs,
+            importedInputs,
+            savePoint,
+            activeId,
+            name,
+            view,
+            scenarioUpdatedAt: scenarios.find((r) => r.id === activeId)?.updated_at ?? null,
+          }
+          localStorage.setItem(key, JSON.stringify(session))
+        } catch {
+          // localStorage full or unavailable: refresh-restore just won't work this session
+        }
+      }, 400)
+      return () => clearTimeout(t)
+    }
+    if (phase === 'empty') {
+      try {
+        localStorage.removeItem(key)
+      } catch {}
+    }
+  }, [phase, working, inputs, importedInputs, savePoint, activeId, name, view, scenarios, userId, orgId])
+
+  // Speed bump before closing/refreshing with unsaved edits: the browser shows its
+  // generic "leave site?" dialog. A refresh would restore the work from the local
+  // snapshot anyway, but closing the tab deserves the warning.
+  useEffect(() => {
+    if (!dirtySinceSave) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirtySinceSave])
 
   // Live render-synced mirrors for the poller (an interval closure would otherwise see
   // stale state). pullFromSheet is a hoisted function declared further down.
@@ -2397,12 +2526,8 @@ function PeopleArea({
         </Foldout>
       )}
 
-      {/* 4) THE ROSTER · editable entity allocation per role */}
-      {roster && roster.length > 0 && (
-        <Foldout label="Show roster">
-          <RosterTable years={years} roster={roster} onPatchPct={onPatchPct} />
-        </Foldout>
-      )}
+      {/* 4) THE ROSTER · compact allocation board: drag a divider to re-allocate a role */}
+      {roster && roster.length > 0 && <RosterBoard years={years} roster={roster} onPatchPct={onPatchPct} />}
     </section>
   )
 }
@@ -2438,10 +2563,13 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
   const yi = Math.max(0, years.indexOf(Number(year)))
 
   const { groups, fteEnt, activeCount } = useMemo(() => {
-    const groups: Record<OrgEntityKey, { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number }> = {
-      meevynd: { active: [], later: [], cost: 0 },
-      naerby: { active: [], later: [], cost: 0 },
-      holding: { active: [], later: [], cost: 0 },
+    const groups: Record<
+      OrgEntityKey,
+      { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number; costPrev: number }
+    > = {
+      meevynd: { active: [], later: [], cost: 0, costPrev: 0 },
+      naerby: { active: [], later: [], cost: 0, costPrev: 0 },
+      holding: { active: [], later: [], cost: 0, costPrev: 0 },
     }
     for (const role of roster) {
       const home = orgHome(role)
@@ -2451,11 +2579,17 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
         const j = role.months.findIndex((m, k) => k > yi && (m || 0) > 0)
         if (j >= 0) groups[home].later.push({ name: role.name, year: years[j] })
       }
-      // Loaded cost lands on ALL entities per the split, not just the home one.
-      const c = roleCost(role)[yi] || 0
-      groups.meevynd.cost += c * (role.pct.meevynd || 0)
-      groups.naerby.cost += c * (role.pct.naerby || 0)
-      groups.holding.cost += c * (role.pct.holding || 0)
+      // Loaded cost lands on ALL entities per the split, not just the home one. The
+      // previous year's cost feeds the header's YoY delta.
+      const c = roleCost(role)
+      const cur = c[yi] || 0
+      const prev = yi > 0 ? c[yi - 1] || 0 : 0
+      groups.meevynd.cost += cur * (role.pct.meevynd || 0)
+      groups.naerby.cost += cur * (role.pct.naerby || 0)
+      groups.holding.cost += cur * (role.pct.holding || 0)
+      groups.meevynd.costPrev += prev * (role.pct.meevynd || 0)
+      groups.naerby.costPrev += prev * (role.pct.naerby || 0)
+      groups.holding.costPrev += prev * (role.pct.holding || 0)
     }
     const rank = (r: RosterRole) => (ORG_LEAD_RE.test(r.name) ? 0 : 1)
     for (const key of Object.keys(groups) as OrgEntityKey[]) {
@@ -2476,7 +2610,7 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
         <div>
           <h2 className="text-base font-semibold text-suite-ink">The org, year by year</h2>
           <p className="mt-0.5 text-xs text-suite-ink-3">
-            {activeCount} of {roster.length} roles active in {years[yi]} · roles sit under their largest allocation
+            {activeCount} of {roster.length} roles active in {years[yi]} · click an entity to unfold its roles
           </p>
         </div>
         <Segmented
@@ -2493,6 +2627,8 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
             color={holding.color}
             group={groups.holding}
             fte={fteEnt.holding[yi] ?? 0}
+            ftePrev={yi > 0 ? fteEnt.holding[yi - 1] ?? 0 : null}
+            prevYear={yi > 0 ? years[yi - 1] : null}
             yearIdx={yi}
           />
         </div>
@@ -2520,6 +2656,8 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
               color={e.color}
               group={groups[e.key]}
               fte={fteEnt[e.key][yi] ?? 0}
+              ftePrev={yi > 0 ? fteEnt[e.key][yi - 1] ?? 0 : null}
+              prevYear={yi > 0 ? years[yi - 1] : null}
               yearIdx={yi}
             />
           ))}
@@ -2529,69 +2667,202 @@ function OrgChart({ years, roster }: { years: number[]; roster: RosterRole[] }) 
   )
 }
 
-// One entity node: header (name + that year's FTE and loaded cost), active role cards
-// (with FTE, split share, and a "new" badge for joiners), and a muted later-hires line.
+// Signed compact deltas for the entity header's YoY line (ASCII sign, no dashes).
+const signedNum = (v: number, dec: number) => `${v < 0 ? '-' : '+'}${fmtNum(Math.abs(v), dec)}`
+const signedEur = (v: number) => `${v < 0 ? '-' : '+'}${fmtEur(Math.abs(Math.round(v)))}`
+
+// One entity node, collapsed to its totals by default: the header carries that year's
+// FTE + loaded cost, the role count, a "+N new" chip, and the YoY delta. Clicking the
+// header unfolds the role cards (FTE, split share, "new" badge) and the later-hires line.
 function OrgEntityCard({
   label,
   color,
   group,
   fte,
+  ftePrev,
+  prevYear,
   yearIdx,
 }: {
   label: string
   color: string
-  group: { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number }
+  group: { active: OrgActiveRole[]; later: { name: string; year: number }[]; cost: number; costPrev: number }
   fte: number
+  ftePrev: number | null
+  prevYear: number | null
   yearIdx: number
 }) {
+  const [open, setOpen] = useState(false)
+  const newCount = group.active.filter((a) => a.isNew).length
+  const dFte = ftePrev == null ? 0 : fte - ftePrev
+  const dCost = prevYear == null ? 0 : group.cost - group.costPrev
+  const showDelta = prevYear != null && (Math.abs(dFte) >= 0.05 || Math.abs(dCost) >= 0.5)
   return (
     <div className="rounded-xl border border-suite-border bg-suite-bg">
-      <div className="flex items-center justify-between gap-2 border-b border-suite-border px-4 py-2.5">
+      <button
+        onClick={() => setOpen(!open)}
+        title={open ? 'Hide roles' : 'Show roles'}
+        className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors hover:bg-suite-subtle"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
           <span className="truncate text-sm font-semibold text-suite-ink">{label}</span>
+          <span className="shrink-0 text-[10px] text-suite-ink-3">
+            {group.active.length} {group.active.length === 1 ? 'role' : 'roles'}
+          </span>
+          {newCount > 0 && (
+            <span className="shrink-0 rounded bg-suite-accent-tint px-1.5 py-0.5 text-[10px] font-medium text-suite-accent-dark">
+              +{newCount} new
+            </span>
+          )}
+          <ChevronDown size={13} className={cx('shrink-0 text-suite-ink-3 transition-transform', open && 'rotate-180')} />
         </div>
-        <span className="shrink-0 text-[11px] tabular-nums text-suite-ink-3">
-          {fmtNum(fte, 1)} FTE · {fmtEur(Math.round(group.cost))}
-        </span>
-      </div>
-      <div className="space-y-1.5 p-3">
-        {group.active.length === 0 && <p className="text-[11px] text-suite-ink-3">No roles yet this year.</p>}
-        {group.active.map(({ role, isNew }, i) => {
-          const home = orgHome(role)
-          const share = role.pct[home] || 0
-          return (
-            <div key={`${role.name}-${i}`} className="rounded-lg border border-suite-border bg-suite-subtle px-3 py-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs font-medium text-suite-ink">{role.name}</span>
-                {isNew && (
-                  <span className="shrink-0 rounded bg-suite-accent-tint px-1.5 py-0.5 text-[10px] font-medium text-suite-accent-dark">
-                    new
-                  </span>
-                )}
-              </div>
-              <div className="mt-0.5 text-[10px] tabular-nums text-suite-ink-3">
-                {fmtNum(Math.min(12, role.months[yearIdx] || 0) / 12, 1)} FTE
-                {share > 0 && share < 1 && ` · ${Math.round(share * 100)}% here`}
-                {share <= 0 && ' · unallocated'}
-              </div>
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] tabular-nums text-suite-ink">
+            {fmtNum(fte, 1)} FTE · {fmtEur(Math.round(group.cost))}
+          </div>
+          {showDelta && (
+            <div className="text-[10px] tabular-nums text-suite-ink-3">
+              {signedNum(dFte, 1)} FTE · {signedEur(dCost)} vs {prevYear}
             </div>
-          )
-        })}
-        {group.later.length > 0 && (
-          <p className="pt-1 text-[10px] leading-relaxed text-suite-ink-3">
-            Joins later: {group.later.map((l) => `${l.name} (${l.year})`).join(', ')}
-          </p>
-        )}
-      </div>
+          )}
+        </div>
+      </button>
+      {open && (
+        <div className="space-y-1.5 border-t border-suite-border p-3">
+          {group.active.length === 0 && <p className="text-[11px] text-suite-ink-3">No roles yet this year.</p>}
+          {group.active.map(({ role, isNew }, i) => {
+            const home = orgHome(role)
+            const share = role.pct[home] || 0
+            return (
+              <div key={`${role.name}-${i}`} className="rounded-lg border border-suite-border bg-suite-subtle px-3 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-medium text-suite-ink">{role.name}</span>
+                  {isNew && (
+                    <span className="shrink-0 rounded bg-suite-accent-tint px-1.5 py-0.5 text-[10px] font-medium text-suite-accent-dark">
+                      new
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-[10px] tabular-nums text-suite-ink-3">
+                  {fmtNum(Math.min(12, role.months[yearIdx] || 0) / 12, 1)} FTE
+                  {share > 0 && share < 1 && ` · ${Math.round(share * 100)}% here`}
+                  {share <= 0 && ' · unallocated'}
+                </div>
+              </div>
+            )
+          })}
+          {group.later.length > 0 && (
+            <p className="pt-1 text-[10px] leading-relaxed text-suite-ink-3">
+              Joins later: {group.later.map((l) => `${l.name} (${l.year})`).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-// Editable roster: one row per role with its active months and three % inputs (Meevynd /
-// Naerby / Holding). Editing a % re-allocates that role's cost between entities (zero-sum
-// at group level) and flows into the Costs & P&L EBIT. bruto/soc/months are fixed.
-function RosterTable({
+// --- Roster board: the editable roster as a compact allocation dashboard. One row per
+// role: name + salary, a mini per-year FTE timeline, and the entity split drawn as ONE
+// stacked bar whose dividers DRAG to re-allocate (snaps to 5%). Moving an inner divider
+// shifts share between the two entities it separates (zero-sum, group cost preserved);
+// the outer divider trades Holding against "unallocated". Clicking a role unfolds the
+// precise % inputs and the month detail for fine control.
+
+/** Drag a divider of the stacked allocation bar. Disabled when the row is over-allocated
+ *  (>100%): the widths would no longer map to pointer position; fix via the % inputs. */
+function AllocationBar({
+  pct,
+  onPatch,
+}: {
+  pct: { meevynd: number; naerby: number; holding: number }
+  onPatch: (entity: 'meevynd' | 'naerby' | 'holding', value: number) => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const m = Math.round((pct.meevynd || 0) * 100)
+  const n = Math.round((pct.naerby || 0) * 100)
+  const h = Math.round((pct.holding || 0) * 100)
+  const total = m + n + h
+  const over = total > 100
+  const b = [m, m + n, m + n + h] // divider positions: after Meevynd, Naerby, Holding
+
+  const startDrag = (bi: 0 | 1 | 2) => (e: React.PointerEvent) => {
+    if (over) return
+    e.preventDefault()
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    // Neighbours stay fixed while this divider moves, so the captured bounds hold.
+    const lo = bi === 0 ? 0 : b[bi - 1]
+    const hi = bi === 2 ? 100 : b[bi + 1]
+    let last = -1
+    const move = (ev: PointerEvent) => {
+      const raw = ((ev.clientX - rect.left) / rect.width) * 100
+      const x = Math.max(lo, Math.min(hi, Math.round(raw / 5) * 5))
+      if (x === last) return
+      last = x
+      if (bi === 0) {
+        onPatch('meevynd', x / 100)
+        onPatch('naerby', (b[1] - x) / 100)
+      } else if (bi === 1) {
+        onPatch('naerby', (x - b[0]) / 100)
+        onPatch('holding', (b[2] - x) / 100)
+      } else {
+        onPatch('holding', (x - b[1]) / 100)
+      }
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const segments = [
+    { key: 'meevynd' as const, left: 0, width: m, label: PEOPLE_ENTITIES[0].label, color: PEOPLE_ENTITIES[0].color },
+    { key: 'naerby' as const, left: b[0], width: n, label: PEOPLE_ENTITIES[1].label, color: PEOPLE_ENTITIES[1].color },
+    { key: 'holding' as const, left: b[1], width: h, label: PEOPLE_ENTITIES[2].label, color: PEOPLE_ENTITIES[2].color },
+  ]
+
+  return (
+    <div ref={ref} className="relative h-7 w-full overflow-hidden rounded-md bg-suite-subtle">
+      {segments.map((s) => (
+        <div
+          key={s.key}
+          title={`${s.label} ${s.width}%`}
+          className="absolute inset-y-0 flex items-center justify-center"
+          style={{ left: `${Math.min(100, s.left)}%`, width: `${Math.max(0, Math.min(100 - s.left, s.width))}%`, background: s.color }}
+        >
+          {s.width >= 12 && <span className="text-[10px] font-medium text-white">{s.width}%</span>}
+        </div>
+      ))}
+      {total < 100 && 100 - b[2] >= 14 && (
+        <div
+          className="absolute inset-y-0 flex items-center justify-center"
+          style={{ left: `${b[2]}%`, width: `${100 - b[2]}%` }}
+          title={`Unallocated ${100 - total}%`}
+        >
+          <span className="text-[10px] text-suite-ink-3">{100 - total}% open</span>
+        </div>
+      )}
+      {!over &&
+        ([0, 1, 2] as const).map((bi) => (
+          <div
+            key={bi}
+            onPointerDown={startDrag(bi)}
+            title="Drag to re-allocate (snaps to 5%)"
+            className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none"
+            style={{ left: `${b[bi]}%` }}
+          >
+            <div className="mx-auto h-full w-0.5 bg-white/90" />
+          </div>
+        ))}
+    </div>
+  )
+}
+
+function RosterBoard({
   years,
   roster,
   onPatchPct,
@@ -2600,52 +2871,115 @@ function RosterTable({
   roster: RosterRole[]
   onPatchPct: (idx: number, entity: 'meevynd' | 'naerby' | 'holding', value: number) => void
 }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null)
+  const last = years.length - 1
+  const rowGrid = 'sm:grid-cols-[minmax(0,1.1fr)_6.5rem_minmax(0,2fr)_3rem]'
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto">
-        <table className={tbl.table}>
-          <thead>
-            <tr>
-              <th className={tbl.th}>Role</th>
-              <th className={tbl.thR}>Months active</th>
-              {PEOPLE_ENTITIES.map((e) => (
-                <th key={e.key} className={tbl.thR}>
-                  {e.label} %
-                </th>
-              ))}
-              <th className={tbl.thR}>Σ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.map((role, idx) => {
-              const sum = role.pct.meevynd + role.pct.naerby + role.pct.holding
-              const sumPct = Math.round(sum * 100)
-              return (
-                <tr key={`${role.name}-${idx}`} className={tbl.tr}>
-                  <td className={tbl.td}>
-                    <div className="font-medium text-suite-ink">{role.name}</div>
-                    <div className="text-[11px] text-suite-ink-3">
-                      {fmtEur(role.bruto)}/mo · soc {fmtPct(role.soc, 0)}
-                    </div>
-                  </td>
-                  <td className={cx(tbl.tdR, 'text-[11px] text-suite-ink-3')}>{role.months.join(' / ')}</td>
+    <div className="rounded-xl border border-suite-border bg-suite-bg">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-suite-border px-4 py-3">
+        <div>
+          <span className="text-sm font-semibold text-suite-ink">The roster</span>
+          <p className="mt-0.5 text-xs text-suite-ink-3">
+            Drag a divider to re-allocate a role between entities (snaps to 5%) · click a role for precise inputs
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {PEOPLE_ENTITIES.map((e) => (
+            <span key={e.key} className="inline-flex items-center gap-1.5 text-[11px] text-suite-ink-3">
+              <span className="h-2 w-2 rounded-full" style={{ background: e.color }} />
+              {e.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className={cx('hidden gap-3 px-4 pb-1 pt-3 text-[10px] uppercase tracking-wide text-suite-ink-3 sm:grid', rowGrid)}>
+        <span>Role</span>
+        <span>
+          FTE {years[0]}-{years[last]}
+        </span>
+        <span>Entity allocation</span>
+        <span className="text-right">Σ</span>
+      </div>
+
+      <div className="divide-y divide-suite-border">
+        {roster.map((role, idx) => {
+          const total = Math.round((role.pct.meevynd + role.pct.naerby + role.pct.holding) * 100)
+          const open = openIdx === idx
+          return (
+            <div key={`${role.name}-${idx}`} className="px-4 py-2">
+              <div className={cx('grid grid-cols-1 items-center gap-2 sm:gap-3', rowGrid)}>
+                <button
+                  onClick={() => setOpenIdx(open ? null : idx)}
+                  className="group flex min-w-0 items-center gap-1.5 text-left"
+                  title={open ? 'Hide detail' : 'Show precise inputs + months'}
+                >
+                  <ChevronDown
+                    size={12}
+                    className={cx('shrink-0 text-suite-ink-3 transition-transform', open && 'rotate-180')}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-suite-ink group-hover:text-suite-accent-dark">
+                      {role.name}
+                    </span>
+                    <span className="block text-[10px] text-suite-ink-3">{fmtEur(role.bruto)}/mo</span>
+                  </span>
+                </button>
+
+                {/* Mini timeline: one cell per year, filled by months active / 12. */}
+                <div
+                  className="flex gap-0.5"
+                  title={years.map((y, i) => `${y}: ${role.months[i] || 0} months`).join(' · ')}
+                >
+                  {years.map((y, i) => {
+                    const frac = Math.min(12, role.months[i] || 0) / 12
+                    return (
+                      <div key={y} className="relative h-2.5 flex-1 overflow-hidden rounded-sm bg-suite-subtle">
+                        <div
+                          className="absolute inset-y-0 left-0"
+                          style={{ width: `${frac * 100}%`, background: C.accentMid }}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <AllocationBar pct={role.pct} onPatch={(entity, value) => onPatchPct(idx, entity, value)} />
+
+                <span
+                  className={cx(
+                    'text-right text-[11px] tabular-nums',
+                    total === 100 ? 'text-suite-ink-3' : 'font-medium text-suite-neg',
+                  )}
+                >
+                  {total}%
+                </span>
+              </div>
+
+              {open && (
+                <div className="mt-2 flex flex-wrap items-end gap-4 rounded-lg bg-suite-subtle px-3 py-2.5">
                   {PEOPLE_ENTITIES.map((e) => (
-                    <td key={e.key} className="w-24 px-3 py-2">
+                    <label key={e.key} className="w-24">
+                      <span className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-suite-ink-3">
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: e.color }} />
+                        {e.label} %
+                      </span>
                       <NumCell
                         value={Math.round((role.pct[e.key] ?? 0) * 100)}
                         step={5}
                         onChange={(v) => onPatchPct(idx, e.key, v / 100)}
                       />
-                    </td>
+                    </label>
                   ))}
-                  <td className={cx(tbl.tdR, 'text-[11px] tabular-nums', sumPct === 100 ? 'text-suite-ink-3' : 'text-suite-neg')}>
-                    {sumPct}%
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                  <p className="pb-1 text-[11px] text-suite-ink-3">
+                    Months active: {years.map((y, i) => `${y}: ${role.months[i] || 0}`).join(' · ')} · soc{' '}
+                    {fmtPct(role.soc, 0)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -3285,6 +3619,8 @@ const mixTooltipStyle = costTooltipStyle
 // Revenue vs cost: a green revenue line over a red total-cost line, with EBIT rendered as a
 // soft green area so the widening gap between the two lines reads as growing profit. Makes
 // operating leverage obvious. revenue = omzet, totalCost = COGS + operating costs, ebit = gap.
+// This one KEEPS the shared tooltip on purpose: the chart exists to compare the three
+// values at a year, so all three belong in one tooltip.
 function RevenueVsCostChart({
   data,
 }: {
@@ -3303,7 +3639,7 @@ function RevenueVsCostChart({
             width={52}
             tickFormatter={(v: number) => fmtM(v, v >= 1e7 || v <= -1e7 ? 0 : 1)}
           />
-          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
+          <Tooltip {...costTooltipStyle} shared formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
           <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
           {/* EBIT as a soft green area so the revenue-over-cost gap reads as profit. */}
           <Area
@@ -3341,11 +3677,18 @@ function RevenueVsCostChart({
 
 // GROUP composition: stacked bars (COGS / operating costs / EBIT) summing to revenue, with
 // the true EBIT overlaid as a line so a negative-EBIT year still reads through the stack.
+// The tooltip shows only the hovered segment (hover-key tracking; recharts' shared=false
+// alone is unreliable across chart types in v3).
 function CompositionChart({
   data,
 }: {
   data: { year: string; cogs: number; opex: number; ebit: number; ebitLine: number }[]
 }) {
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const hover = (key: string) => ({
+    onMouseEnter: () => setHoverKey(key),
+    onMouseLeave: () => setHoverKey(null),
+  })
   return (
     <div style={{ width: '100%', height: 320 }}>
       <ResponsiveContainer>
@@ -3359,15 +3702,20 @@ function CompositionChart({
             width={52}
             tickFormatter={(v: number) => fmtM(v, v >= 1e7 || v <= -1e7 ? 0 : 1)}
           />
-          <Tooltip {...costTooltipStyle} formatter={tipFmt((v) => fmtEur(v))} cursor={{ fill: 'transparent' }} />
+          <Tooltip
+            {...costTooltipStyle}
+            cursor={false}
+            content={<SingleSeriesTip hoverKey={hoverKey} fmt={(v) => fmtEur(v)} />}
+          />
           <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
-          <Bar dataKey="cogs" name="COGS" stackId="rev" fill={COST_COLORS.cogs} isAnimationActive={false} />
+          <Bar dataKey="cogs" name="COGS" stackId="rev" fill={COST_COLORS.cogs} isAnimationActive={false} {...hover('cogs')} />
           <Bar
             dataKey="opex"
             name="Operating costs"
             stackId="rev"
             fill={COST_COLORS.opex}
             isAnimationActive={false}
+            {...hover('opex')}
           />
           <Bar
             dataKey="ebit"
@@ -3376,6 +3724,7 @@ function CompositionChart({
             fill={COST_COLORS.ebit}
             radius={[2, 2, 0, 0]}
             isAnimationActive={false}
+            {...hover('ebit')}
           />
           <Line
             type="monotone"
@@ -3385,6 +3734,7 @@ function CompositionChart({
             strokeWidth={2.5}
             dot={{ r: 2 }}
             isAnimationActive={false}
+            {...hover('ebitLine')}
           />
         </ComposedChart>
       </ResponsiveContainer>

@@ -3,7 +3,7 @@
 // Shared recharts theme + small wrappers for the Business Case Model.
 // Every value passed in must originate from compute()/dataset; these helpers
 // only shape rows and style, never invent numbers.
-import { type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -106,6 +106,67 @@ export function tipFmt(fn: (n: number) => string): (value: RechartsValue) => str
   }
 }
 
+// Tooltip content that shows ONLY the hovered series. recharts 3 honours
+// `shared={false}` for Bar items but Area charts are axis-only and silently
+// ignore it, so stacked charts kept dumping every layer into one tooltip.
+// We track the hovered series key ourselves (mouse enter/leave on each shape)
+// and filter the axis payload down to that single entry; hovering the chart
+// background (no shape under the pointer) shows no tooltip at all.
+interface TipEntry {
+  dataKey?: string | number
+  name?: string | number
+  value?: number | string | ReadonlyArray<number | string>
+  color?: string
+  fill?: string
+}
+
+export function SingleSeriesTip({
+  active,
+  payload,
+  label,
+  hoverKey,
+  fmt,
+}: {
+  active?: boolean
+  payload?: TipEntry[]
+  label?: string | number
+  hoverKey: string | null
+  fmt: (n: number) => string
+}) {
+  if (!active || !hoverKey || !payload?.length) return null
+  const entry = payload.find((p) => String(p.dataKey) === hoverKey)
+  if (!entry) return null
+  const raw = Array.isArray(entry.value) ? entry.value[0] : entry.value
+  const n = Number(raw)
+  return (
+    <div
+      style={{
+        background: '#ffffff',
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        fontSize: 12,
+        boxShadow: '0 4px 12px rgba(15,23,42,0.06)',
+        padding: '8px 12px',
+      }}
+    >
+      <div style={{ color: C.slate, fontWeight: 600 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 2,
+            background: entry.color ?? entry.fill ?? C.slate,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ color: C.ink3 }}>{entry.name}</span>
+        <span style={{ color: C.slate, fontWeight: 500 }}>{Number.isFinite(n) ? fmt(n) : String(raw ?? '')}</span>
+      </div>
+    </div>
+  )
+}
+
 export function ChartShell({ height = 260, children }: { height?: number; children: ReactNode }) {
   return (
     <div style={{ width: '100%', height }}>
@@ -188,13 +249,14 @@ export function StackedAreaChart({
 }) {
   const yFmt = valueFmt === 'num' ? (v: number) => fmtNum(v) : tickM
   const tFmt = valueFmt === 'num' ? (v: number) => fmtNum(Math.round(v)) : (v: number) => fmtEur(v)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   return (
     <ChartShell height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey={xKey} tick={axisTick} tickLine={false} axisLine={{ stroke: C.grid }} />
         <YAxis tick={axisTick} tickLine={false} axisLine={false} width={52} tickFormatter={yFmt} />
-        <Tooltip {...tooltipStyle} formatter={tipFmt(tFmt)} />
+        <Tooltip {...tooltipStyle} cursor={false} content={<SingleSeriesTip hoverKey={hoverKey} fmt={tFmt} />} />
         <Legend wrapperStyle={legendStyle} />
         {series.map((s) => (
           <Area
@@ -208,6 +270,8 @@ export function StackedAreaChart({
             fillOpacity={0.8}
             strokeWidth={1.5}
             isAnimationActive={false}
+            onMouseEnter={() => setHoverKey(s.key)}
+            onMouseLeave={() => setHoverKey(null)}
           />
         ))}
       </AreaChart>
@@ -233,13 +297,14 @@ export function StackedBarsChart({
 }) {
   const yFmt = valueFmt === 'num' ? (v: number) => fmtNum(v) : tickM
   const tFmt = valueFmt === 'num' ? (v: number) => fmtNum(Math.round(v)) : (v: number) => fmtEur(v)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   return (
     <ChartShell height={height}>
       <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey={xKey} tick={axisTick} tickLine={false} axisLine={{ stroke: C.grid }} />
         <YAxis tick={axisTick} tickLine={false} axisLine={false} width={52} tickFormatter={yFmt} />
-        <Tooltip {...tooltipStyle} formatter={tipFmt(tFmt)} />
+        <Tooltip {...tooltipStyle} cursor={false} content={<SingleSeriesTip hoverKey={hoverKey} fmt={tFmt} />} />
         <Legend wrapperStyle={legendStyle} />
         {bars.map((b) => (
           <Bar
@@ -250,6 +315,8 @@ export function StackedBarsChart({
             fill={b.color}
             radius={[2, 2, 0, 0]}
             isAnimationActive={false}
+            onMouseEnter={() => setHoverKey(b.key)}
+            onMouseLeave={() => setHoverKey(null)}
           />
         ))}
         {line && (
@@ -261,6 +328,8 @@ export function StackedBarsChart({
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
+            onMouseEnter={() => setHoverKey(line.key)}
+            onMouseLeave={() => setHoverKey(null)}
           />
         )}
       </ComposedChart>
