@@ -2819,6 +2819,25 @@ function AllocationBar({
     window.addEventListener('pointerup', up)
   }
 
+  // Labels adapt to REAL pixel width (the bar measures itself), so a value is shown
+  // whenever it can physically fit: "10%" normally, a bare "10" when tight, and only
+  // a sliver too small for any text stays blank (its title tooltip still carries it).
+  const [barW, setBarW] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => setBarW(entries[0]?.contentRect.width ?? 0))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const segLabel = (widthPct: number, suffix = ''): string => {
+    const px = (widthPct / 100) * barW
+    const full = `${widthPct}%${suffix}`
+    if (px >= full.length * 7 + 6) return full
+    if (px >= String(widthPct).length * 7 + 4) return String(widthPct)
+    return ''
+  }
+
   const segments = [
     { key: 'meevynd' as const, left: 0, width: m, label: PEOPLE_ENTITIES[0].label, color: PEOPLE_ENTITIES[0].color },
     { key: 'naerby' as const, left: b[0], width: n, label: PEOPLE_ENTITIES[1].label, color: PEOPLE_ENTITIES[1].color },
@@ -2831,19 +2850,21 @@ function AllocationBar({
         <div
           key={s.key}
           title={`${s.label} ${s.width}%`}
-          className="absolute inset-y-0 flex items-center justify-center"
+          className="absolute inset-y-0 flex items-center justify-center overflow-hidden"
           style={{ left: `${Math.min(100, s.left)}%`, width: `${Math.max(0, Math.min(100 - s.left, s.width))}%`, background: s.color }}
         >
-          {s.width >= 12 && <span className="text-[10px] font-medium text-white">{s.width}%</span>}
+          {s.width > 0 && (
+            <span className="whitespace-nowrap text-[10px] font-medium text-white">{segLabel(s.width)}</span>
+          )}
         </div>
       ))}
-      {total < 100 && 100 - b[2] >= 14 && (
+      {total < 100 && (
         <div
-          className="absolute inset-y-0 flex items-center justify-center"
+          className="absolute inset-y-0 flex items-center justify-center overflow-hidden"
           style={{ left: `${b[2]}%`, width: `${100 - b[2]}%` }}
           title={`Unallocated ${100 - total}%`}
         >
-          <span className="text-[10px] text-suite-ink-3">{100 - total}% open</span>
+          <span className="whitespace-nowrap text-[10px] text-suite-ink-3">{segLabel(100 - total, ' open')}</span>
         </div>
       )}
       {!over &&
