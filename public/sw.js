@@ -1,5 +1,9 @@
-// Bump CACHE_NAME on any change here so `activate` purges older caches.
-const CACHE_NAME = 'stillpoint-cis-v2'
+// CACHE_VERSION is stamped with the deploy's git SHA at build time (scripts/stamp-sw.js),
+// so every deploy ships a byte-different worker. That makes the browser detect an update and
+// activate the new worker, which the page listens for to auto-reload into the fresh bundle
+// (see src/lib/sw-register.ts). Locally it stays 'dev' so the working tree is never dirtied.
+const CACHE_VERSION = 'dev'
+const CACHE_NAME = 'stillpoint-cis-' + CACHE_VERSION
 
 self.addEventListener('install', () => {
   // Activate this new worker immediately so a fresh deploy applies on the next load

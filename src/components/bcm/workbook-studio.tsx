@@ -634,6 +634,9 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
   useEffect(() => {
     if (!dirtySinceSave) return
     const warn = (e: BeforeUnloadEvent) => {
+      // Skip the prompt for our own version-update reload (sw-register.ts): the session is
+      // persisted + restored, so that reload is loss-free and should be seamless.
+      if ((window as unknown as { __stillpointReloading?: boolean }).__stillpointReloading) return
       e.preventDefault()
       e.returnValue = ''
     }

@@ -314,32 +314,58 @@ describe('logo value ceiling (entry value + max total value + cap %)', () => {
 })
 
 describe('personnel roster parsing (picks up new roles, stops at the totals block)', () => {
-  // A generous read range overruns the roster into the "Entiteit" loonsom totals block.
-  // Header, a real role, a NEW role appended lower, then the totals header + summary rows
-  // whose month columns carry big numbers that must NOT be read as roles.
+  // Mirrors the REAL live Personeel tab tail: header, real roles (one whose name starts with
+  // an entity, "Meevynd - huidige bezetting", which must still be read), a NEW appended role,
+  // blank spacers, the "TOTAAL loonsom" title, the "Entiteit" totals header, the per-entity
+  // summary rows carrying EURO amounts in the month columns, then the loonindexatie /
+  // cumulatieve-factor rows. Only the four real roles may be parsed.
   const rows: string[][] = [
     ['Naam / rol', 'Bruto maandsalaris', 'Soc', 'Mnd 2027', 'Mnd 2028', 'Mnd 2029', 'Mnd 2030'],
-    ['Sales Manager', '7500', '0.2', '12', '12', '12', '12'],
-    ['', '', '', '', '', '', ''], // blank spacer row between roster entries
+    ['Meevynd - huidige bezetting 2026 (splits naar personen)', '75818', '0.2', '12', '12', '12', '12'],
+    ['Sales Manager', '7500', '0.2', '1', '12', '12', '12'],
+    ['', '', '', '', '', '', ''], // blank spacer inside the roster
     ['Nieuwe functie (added in sheet)', '6000', '0.2', '0', '6', '12', '12'],
-    ['Entiteit', 'Lonen 2027', '', '1151741', '923456', '203326', '240073'],
-    ['Meevynd', '1151741', '', '923456', '203326', '240073', '184625'],
-    ['Naerby', '923456', '', '203326', '240073', '184625', '16741'],
+    ['', '', '', '', '', '', ''],
+    ['TOTAAL loonsom per entiteit (na verdeling)', '', '', '', '', '', ''],
+    ['Entiteit', 'Lonen 2027', '', 'Lonen 2029', 'Lonen 2030', 'Soc. 2027', 'Soc. 2028'],
+    ['Meevynd', '1171841', '', '2334218', '2427587', '244093', '397226'],
+    ['Naerby', '959156', '', '1799599', '1871583', '191765', '296837'],
+    ['Holding', '202826', '', '389459', '405037', '16641', '50014'],
+    ['', '', '', '', '', '', ''],
+    ['LOONINDEXATIE op de totale loonsom (cumulatief)', '', '', '', '', '', ''],
+    ['Indexatie % t.o.v. vorig jaar', '0', '', '0.04', '0.04', '', ''],
+    ['Cumulatieve factor', '1', '', '1.0816', '1.124864', '', ''],
   ]
 
-  it('reads roles up to the totals header and excludes the summary rows', () => {
+  it('reads the real roles (incl. the entity-named one) and excludes the totals + factor rows', () => {
     const { roles, roleCount } = parsePersonnelRoster(rows)
-    expect(roleCount).toBe(2)
-    expect(roles.map((r) => r.name)).toEqual(['Sales Manager', 'Nieuwe functie (added in sheet)'])
+    expect(roleCount).toBe(3)
+    expect(roles.map((r) => r.name)).toEqual([
+      'Meevynd - huidige bezetting 2026 (splits naar personen)',
+      'Sales Manager',
+      'Nieuwe functie (added in sheet)',
+    ])
+    // The summary "Meevynd" euro row must NOT leak in as a role.
+    expect(roles.some((r) => r.bruto > 100000)).toBe(false)
   })
 
-  it('FTE rises with the newly added role (full-year role = 1.0, part-year prorated)', () => {
+  it('FTE rises with the newly added role (full-year = 1.0, part-year prorated)', () => {
     const { fteByYear } = parsePersonnelRoster(rows)
-    // 2027: Sales 12/12 = 1.0, new role 0 months = 0 -> 1.0
-    expect(fteByYear[0]).toBeCloseTo(1.0, 5)
-    // 2028: Sales 1.0 + new role 6/12 = 0.5 -> 1.5
-    expect(fteByYear[1]).toBeCloseTo(1.5, 5)
-    // 2029: both full year -> 2.0
-    expect(fteByYear[2]).toBeCloseTo(2.0, 5)
+    // 2027: Meevynd 12/12=1.0 + Sales 1/12 + new 0 -> 1.0833
+    expect(fteByYear[0]).toBeCloseTo(1 + 1 / 12, 4)
+    // 2028: Meevynd 1.0 + Sales 1.0 + new 6/12=0.5 -> 2.5
+    expect(fteByYear[1]).toBeCloseTo(2.5, 4)
+    // 2029: all three full year -> 3.0
+    expect(fteByYear[2]).toBeCloseTo(3.0, 4)
+  })
+
+  it('stops on the euro-amount rows even without any recognisable header (structural guard)', () => {
+    const noHeader: string[][] = [
+      ['Engineer', '6000', '0.2', '12', '12', '12', '12'],
+      ['Meevynd', '1171841', '', '2334218', '2427587', '244093', '397226'], // euro months -> stop
+      ['Naerby', '959156', '', '1799599', '1871583', '191765', '296837'],
+    ]
+    const { roles } = parsePersonnelRoster(noHeader)
+    expect(roles.map((r) => r.name)).toEqual(['Engineer'])
   })
 })
