@@ -2943,7 +2943,7 @@ function RosterBoard({
                     <span className="block truncate text-xs font-medium text-suite-ink group-hover:text-suite-accent-dark">
                       {role.name}
                     </span>
-                    <span className="block text-[10px] text-suite-ink-3">{fmtEur(role.bruto)}/mo</span>
+                    <span className="block text-[10px] text-suite-ink-3">{fmtEur(role.bruto, true)}/mo</span>
                   </span>
                 </button>
 

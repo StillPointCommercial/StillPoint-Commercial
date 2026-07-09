@@ -119,7 +119,13 @@ export function parsePersonnelRoster(rows: string[][]): PeopleBlock {
   const roles: RosterRole[] = []
   for (const row of rows ?? []) {
     const name = String(row?.[0] ?? '').trim()
-    if (!name || /^naam|^entiteit|^totaal|loonindexatie/i.test(name)) continue
+    // The Personeel tab continues below the roster with the loonsom totals block, headed by
+    // an "Entiteit" row whose Meevynd/Naerby/Holding lines carry big numbers in the month
+    // columns. Stop here: the read range is intentionally generous (so NEW roster rows added
+    // beneath the current list are picked up), so it may overrun into that block, and those
+    // summary rows must never be misread as roles.
+    if (/^entiteit/i.test(name)) break
+    if (!name || /^naam|^totaal|loonindexatie/i.test(name)) continue
     // months active per year: cols D-G = idx 3-6
     const months = [num(row?.[3]), num(row?.[4]), num(row?.[5]), num(row?.[6])]
     if (months.every((m) => m === 0)) continue

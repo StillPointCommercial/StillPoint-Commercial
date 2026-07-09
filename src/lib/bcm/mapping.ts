@@ -30,7 +30,9 @@ export interface SheetMapping {
     dashboard: string
     /** Personeel totals: loonsom + social charges per entity per year. */
     personnelTotals: string
-    /** Personeel roster: one row per role (salary, month-ramp, entity split) for FTE/headcount. */
+    /** Personeel roster: one row per role (salary, month-ramp, entity split) for FTE/headcount.
+     *  Read a generous band so NEW roles added below the current list are picked up; the parser
+     *  stops at the "Entiteit" totals header, so the band may safely overrun into that block. */
     personnelRoster: string
     /** Indirecte kosten tab: per-entity overhead post blocks (Jaar 2027-2030 in cols K-N). */
     indirecte: string
@@ -55,7 +57,7 @@ export const ADAPTA_MAPPING: SheetMapping = {
   readBlocks: {
     dashboard: 'Dashboard!A4:E49',
     personnelTotals: 'Personeel!A57:I60',
-    personnelRoster: 'Personeel!A3:K36',
+    personnelRoster: 'Personeel!A3:K80',
     indirecte: 'Indirecte kosten!A4:N121',
     scenarioPaths: 'Scenario!A8:F11',
     margins: 'Marges!A3:B17',

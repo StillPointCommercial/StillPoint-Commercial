@@ -17,6 +17,7 @@ import {
   type WorkbookInputs,
   type MargesMap,
 } from './workbook'
+import { parsePersonnelRoster } from './workbook-blocks'
 import type { DashboardBlock, EntityPnl, RosterRole } from './workbook-blocks'
 
 const r2 = (a: number[]) => a.map((x) => Math.round(x * 100) / 100)
@@ -309,5 +310,36 @@ describe('logo value ceiling (entry value + max total value + cap %)', () => {
     expect(capped[3]).toBeCloseTo(350000, 0) // 300000*1.15^3 = 456262.5 -> capped to 350000
     // ADAPTA (no maxValue) stays uncapped and unchanged
     expect(streamOmzet(ADAPTA.logos[0])[3]).toBeCloseTo(1368787.5, 0)
+  })
+})
+
+describe('personnel roster parsing (picks up new roles, stops at the totals block)', () => {
+  // A generous read range overruns the roster into the "Entiteit" loonsom totals block.
+  // Header, a real role, a NEW role appended lower, then the totals header + summary rows
+  // whose month columns carry big numbers that must NOT be read as roles.
+  const rows: string[][] = [
+    ['Naam / rol', 'Bruto maandsalaris', 'Soc', 'Mnd 2027', 'Mnd 2028', 'Mnd 2029', 'Mnd 2030'],
+    ['Sales Manager', '7500', '0.2', '12', '12', '12', '12'],
+    ['', '', '', '', '', '', ''], // blank spacer row between roster entries
+    ['Nieuwe functie (added in sheet)', '6000', '0.2', '0', '6', '12', '12'],
+    ['Entiteit', 'Lonen 2027', '', '1151741', '923456', '203326', '240073'],
+    ['Meevynd', '1151741', '', '923456', '203326', '240073', '184625'],
+    ['Naerby', '923456', '', '203326', '240073', '184625', '16741'],
+  ]
+
+  it('reads roles up to the totals header and excludes the summary rows', () => {
+    const { roles, roleCount } = parsePersonnelRoster(rows)
+    expect(roleCount).toBe(2)
+    expect(roles.map((r) => r.name)).toEqual(['Sales Manager', 'Nieuwe functie (added in sheet)'])
+  })
+
+  it('FTE rises with the newly added role (full-year role = 1.0, part-year prorated)', () => {
+    const { fteByYear } = parsePersonnelRoster(rows)
+    // 2027: Sales 12/12 = 1.0, new role 0 months = 0 -> 1.0
+    expect(fteByYear[0]).toBeCloseTo(1.0, 5)
+    // 2028: Sales 1.0 + new role 6/12 = 0.5 -> 1.5
+    expect(fteByYear[1]).toBeCloseTo(1.5, 5)
+    // 2029: both full year -> 2.0
+    expect(fteByYear[2]).toBeCloseTo(2.0, 5)
   })
 })
