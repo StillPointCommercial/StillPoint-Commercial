@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { AppSwitcher } from './app-switcher'
 
 export interface SuiteUser {
   name: string
@@ -46,6 +47,8 @@ export function SuiteHeader({
 
         <div className="flex items-center gap-4">
           <div id="suite-header-actions" className="flex items-center gap-2" />
+          {/* StillPoint Suite app switcher: owner only (clients never see Wouter's other apps). */}
+          {user.role === 'owner' && <AppSwitcher current="cis" iconSize={18} />}
           <div className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-full bg-suite-panel text-xs font-semibold text-suite-ink-2">
               {user.initials}

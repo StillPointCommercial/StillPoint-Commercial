@@ -1,9 +1,21 @@
-import { Settings } from 'lucide-react'
+import { headers } from 'next/headers'
+import { Settings, PenLine, Calculator, ClipboardCheck, Compass, UtensilsCrossed, type LucideIcon } from 'lucide-react'
 import { requireProfile } from '@/lib/suite/auth'
 import { SuiteHeader } from '@/components/suite/suite-header'
 import { initialsOf } from '@/components/suite/utils'
 import { Tile } from '@/components/suite/tile'
 import { toolIcon } from '@/components/suite/icons'
+import { SUITE_APPS, isSuiteHost, resolveSuiteUrl, type SuiteAppId } from '@/components/suite/suite-apps'
+
+// Icons for the other StillPoint apps (owner-only tiles). The app list itself
+// lives in suite-apps.ts (canonical: ~/.claude/PROJECTS.md, "StillPoint Suite").
+const SUITE_APP_ICONS: Partial<Record<SuiteAppId, LucideIcon>> = {
+  sign: PenLine,
+  coi: Calculator,
+  deals: ClipboardCheck,
+  vela: Compass,
+  table: UtensilsCrossed,
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +43,13 @@ export default async function LauncherPage() {
   }
 
   const name = profile.display_name ?? profile.email ?? 'User'
+
+  // Other StillPoint apps (separate deployments). Owner only; links resolve to
+  // the *.stillpointcommercial.com subdomains when this page is itself served
+  // from one, otherwise to the *.vercel.app URLs (consistent auth origins).
+  const host = (await headers()).get('host') ?? ''
+  const onCustomDomain = isSuiteHost(host.split(':')[0])
+  const otherApps = isOwner ? SUITE_APPS.filter((a) => a.id !== 'cis') : []
 
   return (
     <div className="min-h-screen bg-suite-bg font-suite text-suite-ink">
@@ -63,6 +82,29 @@ export default async function LauncherPage() {
             </div>
           )}
         </div>
+
+        {otherApps.length > 0 && (
+          <section className="mt-12" aria-labelledby="other-apps-heading">
+            <h2 id="other-apps-heading" className="text-xs font-semibold uppercase tracking-[0.08em] text-suite-ink-3">
+              Other StillPoint apps
+            </h2>
+            <p className="mt-1 text-sm text-suite-ink-2">
+              Separate apps, same suite. Work tools first, then home.
+            </p>
+            <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {otherApps.map((app) => (
+                <Tile
+                  key={app.id}
+                  href={resolveSuiteUrl(app, onCustomDomain)}
+                  name={app.name}
+                  description={app.tagline}
+                  icon={SUITE_APP_ICONS[app.id] ?? Compass}
+                  badge={app.group === 'home' ? 'Home' : 'Work'}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )
