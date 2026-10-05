@@ -1,7 +1,8 @@
 // Google Drive v3 helpers (SERVER-ONLY, never import from a 'use client' file).
 // Used to make a NATIVE copy of a shared Google Sheet so the original is never
 // touched and the copy keeps every formula, format and chart intact.
-// Authenticate with a Bearer access token from getGoogleAccessToken().
+// Authenticate with a Bearer access token from resolveGoogleAccess() (service
+// account preferred, legacy per-user OAuth as fallback).
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3'
 
@@ -49,6 +50,31 @@ export async function copyFile(
   const json = (await res.json()) as { id?: string }
   if (!json.id) throw new Error('Google Drive did not return a copied file id.')
   return { id: json.id, url: `https://docs.google.com/spreadsheets/d/${json.id}/edit` }
+}
+
+/**
+ * Share a file with a user (default writer) without sending a notification email.
+ * Used when the service account owns a scenario copy: the copy is shared back to
+ * the signed-in user so they can open and edit it manually in their own browser.
+ */
+export async function shareFile(
+  accessToken: string,
+  fileId: string,
+  email: string,
+  role: 'reader' | 'writer' = 'writer',
+): Promise<void> {
+  const res = await fetch(
+    `${DRIVE_BASE}/files/${encodeURIComponent(fileId)}/permissions?sendNotificationEmail=false&supportsAllDrives=true`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'user', role, emailAddress: email }),
+    },
+  )
+  if (!res.ok) throw new Error(await driveError(res))
 }
 
 /**

@@ -25,8 +25,12 @@ export async function GET(request: Request) {
           return NextResponse.redirect(`${origin}/login?error=not_invited`)
         }
 
-        // Persist the Google refresh token so server routes can call Sheets/Drive.
-        if (session?.provider_token || session?.provider_refresh_token) {
+        // Persist the Google grant ONLY when the login explicitly requested Drive
+        // scopes (/login?drive=1 sets this cookie). Routine basic-scope logins must
+        // not overwrite a stored Drive-scoped token with a scopeless one; normal
+        // Sheets/Drive traffic runs through the service account anyway.
+        const storeGoogle = request.headers.get('cookie')?.includes('sp_store_google=1') ?? false
+        if (storeGoogle && (session?.provider_token || session?.provider_refresh_token)) {
           const patch: {
             user_id: string
             updated_at: string
@@ -42,7 +46,9 @@ export async function GET(request: Request) {
           await supabase.from('google_tokens').upsert(patch)
         }
       }
-      return NextResponse.redirect(`${origin}/`)
+      const response = NextResponse.redirect(`${origin}/`)
+      response.cookies.set('sp_store_google', '', { path: '/', maxAge: 0 })
+      return response
     }
   }
 

@@ -146,7 +146,8 @@ interface ImportOk {
 }
 
 interface ImportErr {
-  error: 'no_google_token' | 'bad_url' | 'unrecognized_workbook'
+  error: 'no_google_token' | 'bad_url' | 'unrecognized_workbook' | 'sheet_not_shared'
+  saEmail?: string | null
   sheetTitles?: string[]
 }
 
@@ -716,7 +717,11 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       if (!res.ok || 'error' in json) {
         const err = json as ImportErr
         if (err.error === 'no_google_token') {
-          setError('Sign in with Google again to grant Drive access, then retry.')
+          setError('Google access is not configured yet. Ask StillPoint to finish the Google connection, then retry.')
+        } else if (err.error === 'sheet_not_shared') {
+          setError(
+            `The app cannot open this sheet. Share it (Viewer is enough) with ${err.saEmail ?? 'the StillPoint service account'} and retry.`,
+          )
         } else if (err.error === 'bad_url') {
           setError('That does not look like a Google Sheets link. Paste the full sheet URL.')
         } else if (err.error === 'unrecognized_workbook') {
@@ -865,55 +870,78 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     }
   }
 
-  // SAVE AS NEW: mint a fresh copy from the source, then persist a named scenario.
+  // SAVE AS NEW: persist a named scenario to Supabase ALWAYS; mint its own Sheet copy
+  // only when Google access is available (service account, or the legacy owner token).
+  // Without Google the scenario still saves fully in the app; a later Save attaches a
+  // Sheet copy automatically once access exists.
   async function handleSaveAsNew() {
     if (!working || !inputs || !revenue || savingAs || !userId) return
     const trimmedName = name.trim() || working.title.trim() || 'Scenario'
     // Prefer copying from the source so every scenario gets its OWN copy; fall back to
     // the existing copyId only when no source is known.
     const sourceId = working.sourceId
-    if (!sourceId && !working.copyId) {
-      setError('Nothing to copy from. Re-import the sheet first.')
-      return
-    }
     setSavingAs(true)
     setError(null)
     setExportNote(null)
+    let copyId: string | null = null
+    let copyUrl: string | null = null
+    let sheetNote: string | null = null
     try {
-      const res = await fetch('/api/bcm/workbook/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceId: sourceId ?? undefined,
-          copyId: sourceId ? undefined : working.copyId ?? undefined,
-          name: trimmedName,
-          mappingId: working.mappingId,
-          inputs,
-          funnelRows: buildFunnelRows(inputs, revenue.years),
-        }),
-      })
-      const json = (await res.json()) as { copyId?: string; url?: string; error?: string }
-      if (!res.ok || !json.copyId || !json.url) {
-        setError(`Save failed: ${json.error ?? 'unknown error'}`)
-        return
+      if (sourceId || working.copyId) {
+        try {
+          const res = await fetch('/api/bcm/workbook/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: sourceId ?? undefined,
+              copyId: sourceId ? undefined : working.copyId ?? undefined,
+              name: trimmedName,
+              mappingId: working.mappingId,
+              inputs,
+              funnelRows: buildFunnelRows(inputs, revenue.years),
+            }),
+          })
+          const json = (await res.json()) as {
+            copyId?: string
+            url?: string
+            error?: string
+            shareWarning?: string
+          }
+          if (res.ok && json.copyId && json.url) {
+            copyId = json.copyId
+            copyUrl = json.url
+            if (json.shareWarning) sheetNote = json.shareWarning
+          } else {
+            sheetNote = json.error ?? 'Google Sheets is unreachable'
+          }
+        } catch (err) {
+          sheetNote = err instanceof Error ? err.message : 'Google Sheets is unreachable'
+        }
+      } else {
+        sheetNote = 'this scenario has no source sheet'
       }
       const created = await createWorkbookScenario(userId, orgId, {
         name: trimmedName,
         source_id: working.sourceId,
-        copy_id: json.copyId,
-        copy_url: json.url,
+        copy_id: copyId,
+        copy_url: copyUrl,
         mapping_id: working.mappingId,
         inputs,
         blocks: working.blocks,
       })
       await refreshScenarios()
-      setWorking((w) => (w ? { ...w, copyId: json.copyId!, copyUrl: json.url!, title: trimmedName } : w))
+      setWorking((w) => (w ? { ...w, copyId, copyUrl: copyUrl ?? '', title: trimmedName } : w))
       if (created) {
         setActiveId(created.id)
         setName(created.name)
       }
       setSavePoint(cloneInputs(inputs))
-      setExportNote(json.url)
+      if (copyUrl) setExportNote(copyUrl)
+      if (sheetNote) {
+        setError(
+          `Scenario saved in the app, but without a Google Sheet copy (${sheetNote}). Everything keeps working; Save again later to attach a Sheet once Google access is set up.`,
+        )
+      }
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`)
     } finally {
@@ -921,32 +949,59 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
     }
   }
 
-  // SAVE: update the active scenario's copy in place and persist its snapshot.
+  // SAVE: persist the snapshot to Supabase ALWAYS; sync the Sheet copy when Google
+  // access is available, minting a copy on the fly for scenarios saved without one
+  // (so a copy-less scenario heals itself once the service account is configured).
   async function handleSave() {
-    if (!working || !inputs || !revenue || saving || !userId || !activeId || !working.copyId) return
+    if (!working || !inputs || !revenue || saving || !userId || !activeId) return
     setSaving(true)
     setError(null)
     setExportNote(null)
+    let sheetNote: string | null = null
     try {
-      const res = await fetch('/api/bcm/workbook/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          copyId: working.copyId,
-          mappingId: working.mappingId,
-          inputs,
-          funnelRows: buildFunnelRows(inputs, revenue.years),
-        }),
-      })
-      const json = (await res.json()) as { copyId?: string; url?: string; error?: string }
-      if (!res.ok || !json.url) {
-        setError(`Save failed: ${json.error ?? 'unknown error'}`)
-        return
+      if (working.copyId || working.sourceId) {
+        try {
+          const existingCopyId = working.copyId
+          const res = await fetch('/api/bcm/workbook/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              copyId: existingCopyId ?? undefined,
+              sourceId: existingCopyId ? undefined : working.sourceId ?? undefined,
+              name: working.title,
+              mappingId: working.mappingId,
+              inputs,
+              funnelRows: buildFunnelRows(inputs, revenue.years),
+            }),
+          })
+          const json = (await res.json()) as {
+            copyId?: string
+            url?: string
+            error?: string
+            shareWarning?: string
+          }
+          if (res.ok && json.copyId && json.url) {
+            if (json.copyId !== existingCopyId) {
+              await updateWorkbookScenario(activeId, { copy_id: json.copyId, copy_url: json.url })
+              setWorking((w) => (w ? { ...w, copyId: json.copyId!, copyUrl: json.url! } : w))
+            }
+            if (json.shareWarning) sheetNote = json.shareWarning
+            setExportNote(json.url)
+          } else {
+            sheetNote = json.error ?? 'Google Sheets is unreachable'
+          }
+        } catch (err) {
+          sheetNote = err instanceof Error ? err.message : 'Google Sheets is unreachable'
+        }
       }
       await updateWorkbookScenario(activeId, { inputs, blocks: working.blocks })
       await refreshScenarios()
       setSavePoint(cloneInputs(inputs))
-      setExportNote(json.url)
+      if (sheetNote) {
+        setError(
+          `Saved in the app, but the Google Sheet copy was not synced (${sheetNote}). Your numbers are safe; the Sheet will catch up on a later save.`,
+        )
+      }
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`)
     } finally {
@@ -1218,7 +1273,7 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
       {activeId && (
         <button
           onClick={handleSave}
-          disabled={saving || !working.copyId || !userId}
+          disabled={saving || !userId}
           title="Save"
           className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-suite-border bg-suite-bg px-2.5 py-1.5 text-xs font-medium text-suite-ink transition-colors hover:bg-suite-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >

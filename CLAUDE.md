@@ -9,6 +9,13 @@ Conventions:
 - New public Supabase tables need explicit GRANTs + RLS (see supabase/ migrations for the pattern).
 - Windows/OneDrive quirk: remove .next before builds (rm -rf .next) to avoid EINVAL.
 
+## Google access (BCM sheet round-trip)
+
+- All Sheets/Drive traffic goes through `resolveGoogleAccess()` (src/lib/google/token.ts): the StillPoint SERVICE ACCOUNT when `GOOGLE_SA_EMAIL` + `GOOGLE_SA_PRIVATE_KEY` are set (Vercel env + .env.local), else the signed-in user's stored OAuth token (legacy transition path). It requires a signed-in Supabase user either way.
+- Service-account mode: source sheets must be shared with the SA address (Viewer suffices); scenario copies are owned by the SA and shared back to the signed-in user so they can edit them manually in their browser. This is what keeps the suite working inside customer workspaces that block third-party Drive/Sheets access (e.g. Adapta).
+- Default Google sign-in requests only basic scopes (no consent screen, works under restrictive workspace policies). `/login?drive=1` requests the legacy Drive scopes and stores the grant (owner-only, for while the SA is not configured); routine logins never overwrite stored tokens.
+- Saves are Supabase-first: a scenario always persists (copy_id may be null); the Sheet copy syncs when Google access exists and self-heals on a later save.
+
 ## Health Stack
 
 - typecheck: npx tsc --noEmit

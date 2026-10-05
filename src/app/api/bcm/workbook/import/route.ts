@@ -4,16 +4,18 @@
 //   { url }    -> read the shared SOURCE, returns sourceId
 //   { copyId } -> re-read an existing scenario copy (refresh), returns copyId
 // Returns parsed revenue inputs, the computed revenue, and the read-only cost/people blocks.
-import { getGoogleAccessToken } from '@/lib/google/token'
+import { resolveGoogleAccess, type GoogleAccess } from '@/lib/google/token'
 import { extractSpreadsheetId, getSpreadsheetMeta, readRanges } from '@/lib/google/sheets'
 import { detectMapping } from '@/lib/bcm/mapping'
 import { parseWorkbookInputs, computeWorkbookRevenue } from '@/lib/bcm/workbook'
 
 export async function POST(req: Request): Promise<Response> {
+  let access: GoogleAccess | null = null
   try {
     const body = (await req.json()) as { url?: string; copyId?: string }
-    const token = await getGoogleAccessToken()
-    if (!token) return Response.json({ error: 'no_google_token' }, { status: 400 })
+    access = await resolveGoogleAccess()
+    if (!access) return Response.json({ error: 'no_google_token' }, { status: 400 })
+    const token = access.token
 
     let id: string
     let sourceId: string | null = null
@@ -77,6 +79,11 @@ export async function POST(req: Request): Promise<Response> {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed.'
+    // In service-account mode a 403/404 almost always means the sheet was never
+    // shared with the SA address; tell the user exactly what to share.
+    if (access?.via === 'service-account' && /\b40[34]\b/.test(message)) {
+      return Response.json({ error: 'sheet_not_shared', saEmail: access.saEmail }, { status: 400 })
+    }
     return Response.json({ error: message }, { status: 500 })
   }
 }

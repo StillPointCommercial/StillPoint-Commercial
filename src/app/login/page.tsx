@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-// Requested at sign-in so the Business Case Model can read/write Google Sheets.
-// `drive` (full) is needed to natively COPY a shared sheet the app did not create,
-// so the original stays untouched. Can be tightened to drive.file + Picker before
-// onboarding external clients.
-const GOOGLE_SCOPES =
+// Default sign-in asks ONLY basic profile scopes, so it works inside customer
+// workspaces that block third-party Drive/Sheets access (e.g. Adapta): all file
+// traffic runs through the StillPoint service account server-side. Opening
+// /login?drive=1 requests the legacy Drive scopes and stores that grant; it is
+// an owner-only transition path for while the service account is not configured.
+const DRIVE_SCOPES =
   'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive'
 
 export default function LoginPage() {
@@ -31,13 +32,20 @@ export default function LoginPage() {
   async function signInWithGoogle() {
     setLoading(true)
     setError(null)
+    const driveMode = new URLSearchParams(window.location.search).get('drive') === '1'
+    if (driveMode) {
+      // Tell the auth callback to persist THIS grant's tokens. Routine basic-scope
+      // logins must never overwrite a stored Drive-scoped refresh token.
+      document.cookie = 'sp_store_google=1; path=/; max-age=600; samesite=lax'
+    }
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: GOOGLE_SCOPES,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
+        ...(driveMode
+          ? { scopes: DRIVE_SCOPES, queryParams: { access_type: 'offline', prompt: 'consent' } }
+          : {}),
       },
     })
     if (error) {

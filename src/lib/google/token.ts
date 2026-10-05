@@ -1,4 +1,34 @@
 import { createClient } from '@/lib/supabase/server'
+import { getServiceAccountToken, serviceAccountEmail } from './service-account'
+
+export interface GoogleAccess {
+  token: string
+  via: 'service-account' | 'user-oauth'
+  saEmail: string | null
+}
+
+/**
+ * Preferred Google access for Sheets/Drive calls. Requires a signed-in Supabase
+ * user (so the service account is never exposed to anonymous requests), then
+ * prefers the StillPoint service account when configured, since that works
+ * regardless of the customer workspace's third-party app policy. Falls back to
+ * the user's stored OAuth token (legacy / transition path, granted via
+ * /login?drive=1).
+ */
+export async function resolveGoogleAccess(): Promise<GoogleAccess | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const sa = await getServiceAccountToken()
+  if (sa) return { token: sa, via: 'service-account', saEmail: serviceAccountEmail() }
+
+  const userToken = await getGoogleAccessToken()
+  if (userToken) return { token: userToken, via: 'user-oauth', saEmail: null }
+  return null
+}
 
 /**
  * Returns a valid Google access token for the current user, refreshing it via
