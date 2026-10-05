@@ -11,7 +11,9 @@ Conventions:
 
 ## Google access (BCM sheet round-trip)
 
-- All Sheets/Drive traffic goes through `resolveGoogleAccess()` (src/lib/google/token.ts): the StillPoint SERVICE ACCOUNT when `GOOGLE_SA_EMAIL` + `GOOGLE_SA_PRIVATE_KEY` are set (Vercel env + .env.local), else the signed-in user's stored OAuth token (legacy transition path). It requires a signed-in Supabase user either way.
+- All Sheets/Drive traffic goes through `resolveGoogleAccess()` (src/lib/google/token.ts): the StillPoint SERVICE ACCOUNT when configured, else the signed-in user's stored OAuth token (legacy transition path). It requires a signed-in Supabase user either way.
+- SA config: `GOOGLE_SA_KEY_JSON` = the whole downloaded key file pasted as-is (preferred), or `GOOGLE_SA_EMAIL` + `GOOGLE_SA_PRIVATE_KEY`. SA: `stillpoint-sheets@stillpoint-suite.iam.gserviceaccount.com` in GCP project stillpoint-suite (key creation is allowed there via a project-level override of the org policy `iam.disableServiceAccountKeyCreation`; the rest of the org still blocks keys). Sheets + Drive APIs are enabled in that project.
+- Export self-heals: in SA mode, a save to a legacy copy the SA cannot see re-mints an SA-owned copy from the source and re-points the scenario.
 - Service-account mode: source sheets must be shared with the SA address (Viewer suffices); scenario copies are owned by the SA and shared back to the signed-in user so they can edit them manually in their browser. This is what keeps the suite working inside customer workspaces that block third-party Drive/Sheets access (e.g. Adapta).
 - Default Google sign-in requests only basic scopes (no consent screen, works under restrictive workspace policies). `/login?drive=1` requests the legacy Drive scopes and stores the grant (owner-only, for while the SA is not configured); routine logins never overwrite stored tokens.
 - Saves are Supabase-first: a scenario always persists (copy_id may be null); the Sheet copy syncs when Google access exists and self-heals on a later save.

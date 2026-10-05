@@ -81,7 +81,11 @@ export async function POST(req: Request): Promise<Response> {
     const message = err instanceof Error ? err.message : 'Import failed.'
     // In service-account mode a 403/404 almost always means the sheet was never
     // shared with the SA address; tell the user exactly what to share.
-    if (access?.via === 'service-account' && /\b40[34]\b/.test(message)) {
+    if (
+      access?.via === 'service-account' &&
+      /\b40[34]\b/.test(message) &&
+      !/has not been used|SERVICE_DISABLED|is disabled/i.test(message)
+    ) {
       return Response.json({ error: 'sheet_not_shared', saEmail: access.saEmail }, { status: 400 })
     }
     return Response.json({ error: message }, { status: 500 })

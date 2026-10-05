@@ -967,7 +967,9 @@ export function WorkbookStudio({ userId, orgId }: { userId: string | null; orgId
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               copyId: existingCopyId ?? undefined,
-              sourceId: existingCopyId ? undefined : working.sourceId ?? undefined,
+              // Always send the source too: the route uses it to mint a fresh copy when
+              // none exists, or when the existing copy is unreachable (self-heal).
+              sourceId: working.sourceId ?? undefined,
               name: working.title,
               mappingId: working.mappingId,
               inputs,

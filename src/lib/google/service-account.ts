@@ -1,5 +1,6 @@
 // Service-account auth for Google Sheets/Drive (SERVER-ONLY).
-// When GOOGLE_SA_EMAIL + GOOGLE_SA_PRIVATE_KEY are configured, ALL Sheets/Drive
+// When the service account is configured (GOOGLE_SA_KEY_JSON, or GOOGLE_SA_EMAIL +
+// GOOGLE_SA_PRIVATE_KEY), ALL Sheets/Drive
 // traffic runs as the StillPoint service account instead of per-user OAuth tokens.
 // Client users then never need Drive scopes at sign-in, which keeps the suite
 // working inside customer workspaces that block third-party app access (e.g.
@@ -15,12 +16,44 @@ const SA_SCOPES =
 
 let cached: { token: string; expiresAt: number } | null = null
 
+interface SaCreds {
+  email: string
+  key: string
+}
+
+/**
+ * Credentials come from GOOGLE_SA_KEY_JSON (the whole downloaded key file, pasted
+ * as-is: the easiest and least error-prone setup) or, as a fallback, from the pair
+ * GOOGLE_SA_EMAIL + GOOGLE_SA_PRIVATE_KEY.
+ */
+function readCreds(): SaCreds | null {
+  const json = process.env.GOOGLE_SA_KEY_JSON?.trim()
+  if (json) {
+    try {
+      const parsed = JSON.parse(json) as { client_email?: string; private_key?: string }
+      if (parsed.client_email && parsed.private_key) {
+        return { email: parsed.client_email, key: parsed.private_key }
+      }
+      console.error('[google/sa] GOOGLE_SA_KEY_JSON lacks client_email or private_key')
+    } catch {
+      console.error('[google/sa] GOOGLE_SA_KEY_JSON is not valid JSON')
+    }
+  }
+  const email = process.env.GOOGLE_SA_EMAIL?.trim()
+  const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY?.trim()
+  if (email && rawKey) {
+    // Tolerate a value pasted with its JSON quotes and with literal \n sequences.
+    return { email, key: rawKey.replace(/^"|"$/g, '').replace(/\\n/g, '\n') }
+  }
+  return null
+}
+
 export function serviceAccountEmail(): string | null {
-  return process.env.GOOGLE_SA_EMAIL?.trim() || null
+  return readCreds()?.email ?? null
 }
 
 export function serviceAccountConfigured(): boolean {
-  return Boolean(serviceAccountEmail() && process.env.GOOGLE_SA_PRIVATE_KEY)
+  return readCreds() !== null
 }
 
 const b64url = (s: string): string => Buffer.from(s).toString('base64url')
@@ -31,14 +64,12 @@ const b64url = (s: string): string => Buffer.from(s).toString('base64url')
  * can fall back to the legacy per-user OAuth token.
  */
 export async function getServiceAccountToken(): Promise<string | null> {
-  const email = serviceAccountEmail()
-  const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY
-  if (!email || !rawKey) return null
+  const creds = readCreds()
+  if (!creds) return null
   if (cached && cached.expiresAt > Date.now() + 120_000) return cached.token
 
   try {
-    // Vercel env vars often store the key with literal \n sequences.
-    const key = rawKey.replace(/\\n/g, '\n')
+    const { email, key } = creds
     const iat = Math.floor(Date.now() / 1000)
     const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
     const claims = b64url(
